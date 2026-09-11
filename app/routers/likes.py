@@ -1,0 +1,73 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app import models
+from app.auth import get_current_user
+from app.database import get_db
+from app.schemas import LikeResponse
+from app.services.notifications import send_like_notification
+
+router = APIRouter(prefix="/posts", tags=["likes"])
+
+
+def _get_post_or_404(db: Session, post_id: int) -> models.Post:
+    post = db.query(models.Post).filter(models.Post.id == post_id).first()
+    if post is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    return post
+
+
+def _get_like(db: Session, post_id: int, user_id: int) -> models.Like | None:
+    return (
+        db.query(models.Like)
+        .filter(models.Like.post_id == post_id, models.Like.user_id == user_id)
+        .first()
+    )
+
+
+@router.post("/{post_id}/like", response_model=LikeResponse, status_code=status.HTTP_201_CREATED)
+def like_post(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    post = _get_post_or_404(db, post_id)
+
+    if _get_like(db, post_id, current_user.id) is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Post already liked")
+
+    like = models.Like(post_id=post_id, user_id=current_user.id)
+    db.add(like)
+    try:
+        db.commit()
+    except IntegrityError:
+        # A concurrent request won the race and inserted the same
+        # (post_id, user_id) pair first; the unique constraint caught it.
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Post already liked")
+
+    db.refresh(like)
+
+    # Don't notify a user about their own like on their own post.
+    if post.author_id != current_user.id:
+        send_like_notification(post_owner_email=post.author.email, post_title=post.title)
+
+    return like
+
+
+@router.delete("/{post_id}/like", status_code=status.HTTP_204_NO_CONTENT)
+def unlike_post(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    _get_post_or_404(db, post_id)
+
+    like = _get_like(db, post_id, current_user.id)
+    if like is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Like not found")
+
+    db.delete(like)
+    db.commit()
+    return None
