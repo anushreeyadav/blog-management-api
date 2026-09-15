@@ -336,7 +336,7 @@ class TestImageInPostResponses:
 
         resp = client.get("/posts")
         assert resp.status_code == 200
-        assert "image" in resp.json()[0]
+        assert "image" in resp.json()["items"][0]
 
 
 # 11: uploaded image is physically stored under media/posts/ (the isolated

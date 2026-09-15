@@ -116,6 +116,14 @@ class PostResponse(BaseModel):
     image: str | None = None
 
 
+class PaginatedPosts(BaseModel):
+    items: list[PostResponse]
+    page: int
+    limit: int
+    total: int
+    total_pages: int
+
+
 # ---------------------------------------------------------------------------
 # Comments
 # ---------------------------------------------------------------------------

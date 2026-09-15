@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+import math
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app import models
 from app.auth import get_current_user
 from app.database import get_db
-from app.schemas import PostCreate, PostResponse, PostUpdate
+from app.schemas import PaginatedPosts, PostCreate, PostResponse, PostUpdate
 from app.services import media as media_service
 
 router = APIRouter(prefix="/posts", tags=["posts"])
@@ -34,9 +37,30 @@ def create_post(
     return post
 
 
-@router.get("", response_model=list[PostResponse])
-def list_posts(db: Session = Depends(get_db)):
-    return db.query(models.Post).order_by(models.Post.id).all()
+@router.get("", response_model=PaginatedPosts)
+def list_posts(
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    limit: int = Query(10, ge=1, le=100, description="Posts per page (max 100)"),
+    search: str | None = Query(None, description="Case-insensitive match against post title or content"),
+    db: Session = Depends(get_db),
+):
+    query = db.query(models.Post)
+    if search:
+        pattern = f"%{search}%"
+        query = query.filter(or_(models.Post.title.ilike(pattern), models.Post.content.ilike(pattern)))
+
+    total = query.count()
+    offset = (page - 1) * limit
+    items = query.order_by(models.Post.id).offset(offset).limit(limit).all()
+    total_pages = math.ceil(total / limit) if total else 0
+
+    return {
+        "items": items,
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "total_pages": total_pages,
+    }
 
 
 @router.get("/mine", response_model=list[PostResponse])
