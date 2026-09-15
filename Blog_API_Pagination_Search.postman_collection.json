@@ -1,0 +1,205 @@
+{
+  "info": {
+    "name": "Blog API - Pagination & Search",
+    "description": "Requests demonstrating pagination and search on GET /posts, plus the existing JWT auth flow and image-upload feature they build on. No real credentials or tokens are stored in this file -- fill in {{demo_username}}/{{demo_email}}/{{demo_password}} yourself and run Register + Login first; Login's test script saves the returned JWT into {{jwt_token}} automatically for every other request.\n\nThe API stores an uploaded image as a URL on the Post record via a dedicated POST /posts/{post_id}/image endpoint (not on the create/update body itself, since FastAPI can't accept one route as both JSON and multipart/form-data), so 'Create Post with Image' and 'Update Post with Image' are each a small folder: create/update the post, then attach the image.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000", "type": "string" },
+    { "key": "demo_username", "value": "", "type": "string", "description": "Set before running Register/Login" },
+    { "key": "demo_email", "value": "", "type": "string", "description": "Set before running Register" },
+    { "key": "demo_password", "value": "", "type": "string", "description": "Set before running Register/Login -- never commit a real password here" },
+    { "key": "jwt_token", "value": "", "type": "string", "description": "Auto-filled by Login's test script" },
+    { "key": "post_id", "value": "", "type": "string", "description": "Auto-filled after Create Post / used by image + update requests" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{demo_username}}\",\n  \"email\": \"{{demo_email}}\",\n  \"password\": \"{{demo_password}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"] }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.access_token) {",
+                  "    pm.collectionVariables.set('jwt_token', body.access_token);",
+                  "}",
+                  "pm.test('login returned a token', () => pm.expect(body.access_token).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{demo_username}}\",\n  \"password\": \"{{demo_password}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Posts - Default",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/posts", "host": ["{{base_url}}"], "path": ["posts"] }
+      }
+    },
+    {
+      "name": "Get Posts - Pagination",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/posts?page=1&limit=10",
+          "host": ["{{base_url}}"],
+          "path": ["posts"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "10" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Posts - Search",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/posts?search=fastapi",
+          "host": ["{{base_url}}"],
+          "path": ["posts"],
+          "query": [{ "key": "search", "value": "fastapi" }]
+        }
+      }
+    },
+    {
+      "name": "Get Posts - Search + Pagination",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/posts?search=fastapi&page=1&limit=10",
+          "host": ["{{base_url}}"],
+          "path": ["posts"],
+          "query": [
+            { "key": "search", "value": "fastapi" },
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "10" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Create Post with Image",
+      "item": [
+        {
+          "name": "1. Create Post",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.id) { pm.collectionVariables.set('post_id', body.id); }",
+                  "pm.test('post created', () => pm.expect(pm.response.code).to.equal(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{jwt_token}}" }] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"5 Tips for Writing Clean FastAPI Code\",\n  \"content\": \"FastAPI makes it easy to build fast, well-typed APIs, but clean structure still matters.\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/posts", "host": ["{{base_url}}"], "path": ["posts"] }
+          }
+        },
+        {
+          "name": "2. Upload Image",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{jwt_token}}" }] },
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "image", "type": "file", "src": "" }]
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/{{post_id}}/image",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{post_id}}", "image"]
+            },
+            "description": "Set the 'image' form field's file to a local JPG/PNG/WEBP before sending (max 5MB)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update Post with Image",
+      "item": [
+        {
+          "name": "1. Update Post (title/content)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{jwt_token}}" }] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"5 Tips for Writing Clean, Maintainable FastAPI Code\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/{{post_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{post_id}}"]
+            },
+            "description": "Only the author's own post_id will succeed (403 otherwise). Omitted fields (e.g. content) are left unchanged; the image is untouched by this call."
+          }
+        },
+        {
+          "name": "2. Replace Image",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{jwt_token}}" }] },
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "image", "type": "file", "src": "" }]
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/{{post_id}}/image",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{post_id}}", "image"]
+            },
+            "description": "Set the 'image' form field's file before sending. Replaces the post's current image; the old file is deleted after the new one is saved."
+          }
+        }
+      ]
+    }
+  ]
+}
