@@ -1,14 +1,10 @@
-import math
-
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import or_
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app import models
 from app.auth import get_current_user
 from app.database import get_db
-from app.schemas import PaginatedPosts, PostCreate, PostResponse, PostUpdate
-from app.services import media as media_service
+from app.schemas import PostCreate, PostResponse, PostUpdate
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
@@ -37,30 +33,9 @@ def create_post(
     return post
 
 
-@router.get("", response_model=PaginatedPosts)
-def list_posts(
-    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
-    limit: int = Query(10, ge=1, le=100, description="Posts per page (max 100)"),
-    search: str | None = Query(None, description="Case-insensitive match against post title or content"),
-    db: Session = Depends(get_db),
-):
-    query = db.query(models.Post)
-    if search:
-        pattern = f"%{search}%"
-        query = query.filter(or_(models.Post.title.ilike(pattern), models.Post.content.ilike(pattern)))
-
-    total = query.count()
-    offset = (page - 1) * limit
-    items = query.order_by(models.Post.id).offset(offset).limit(limit).all()
-    total_pages = math.ceil(total / limit) if total else 0
-
-    return {
-        "items": items,
-        "page": page,
-        "limit": limit,
-        "total": total,
-        "total_pages": total_pages,
-    }
+@router.get("", response_model=list[PostResponse])
+def list_posts(db: Session = Depends(get_db)):
+    return db.query(models.Post).order_by(models.Post.id).all()
 
 
 @router.get("/mine", response_model=list[PostResponse])
@@ -99,30 +74,6 @@ def update_post(
 
     db.commit()
     db.refresh(post)
-    return post
-
-
-@router.post("/{post_id}/image", response_model=PostResponse)
-async def upload_post_image(
-    post_id: int,
-    image: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-):
-    post = _get_post_or_404(db, post_id)
-    if post.author_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to modify this post")
-
-    new_image_path = await media_service.save_post_image(image)
-    old_image_path = post.image
-
-    post.image = new_image_path
-    db.commit()
-    db.refresh(post)
-
-    # Only remove the old file after the new path is safely committed, so a
-    # failed commit never leaves the post pointing at a deleted image.
-    media_service.delete_post_image(old_image_path)
     return post
 
 

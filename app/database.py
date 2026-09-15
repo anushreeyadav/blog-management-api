@@ -1,7 +1,7 @@
 import os
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 load_dotenv()
@@ -38,20 +38,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
-
-def ensure_post_image_column() -> None:
-    """
-    Base.metadata.create_all only creates tables that don't exist yet -- it
-    never alters an existing one. Databases created before the image column
-    was added need it backfilled by hand, without touching any existing
-    rows (they end up with image = NULL, same as any other nullable column).
-    """
-    inspector = inspect(engine)
-    if "posts" not in inspector.get_table_names():
-        return
-    columns = {col["name"] for col in inspector.get_columns("posts")}
-    if "image" in columns:
-        return
-    with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE posts ADD COLUMN image VARCHAR(500)"))

@@ -113,15 +113,6 @@ class PostResponse(BaseModel):
     content: str
     author_id: int
     created_at: datetime
-    image: str | None = None
-
-
-class PaginatedPosts(BaseModel):
-    items: list[PostResponse]
-    page: int
-    limit: int
-    total: int
-    total_pages: int
 
 
 # ---------------------------------------------------------------------------
