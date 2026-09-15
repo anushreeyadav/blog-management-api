@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app import models
 from app.auth import get_current_user
 from app.database import get_db
 from app.schemas import PostCreate, PostResponse, PostUpdate
+from app.services import media as media_service
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
@@ -74,6 +75,30 @@ def update_post(
 
     db.commit()
     db.refresh(post)
+    return post
+
+
+@router.post("/{post_id}/image", response_model=PostResponse)
+async def upload_post_image(
+    post_id: int,
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    post = _get_post_or_404(db, post_id)
+    if post.author_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to modify this post")
+
+    new_image_path = await media_service.save_post_image(image)
+    old_image_path = post.image
+
+    post.image = new_image_path
+    db.commit()
+    db.refresh(post)
+
+    # Only remove the old file after the new path is safely committed, so a
+    # failed commit never leaves the post pointing at a deleted image.
+    media_service.delete_post_image(old_image_path)
     return post
 
 

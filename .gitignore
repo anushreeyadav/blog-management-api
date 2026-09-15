@@ -17,3 +17,6 @@ __pycache__/
 # SQLite database
 *.db
 *.sqlite3
+
+# Uploaded post images
+media/

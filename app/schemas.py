@@ -113,6 +113,7 @@ class PostResponse(BaseModel):
     content: str
     author_id: int
     created_at: datetime
+    image: str | None = None
 
 
 # ---------------------------------------------------------------------------
