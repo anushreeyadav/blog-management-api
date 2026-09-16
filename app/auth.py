@@ -20,7 +20,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# auto_error=False so a missing token is reported as our own 401 below,
+# aut
 # rather than HTTPBearer's default 403 ("Not authenticated").
 bearer_scheme = HTTPBearer(auto_error=False)
 
