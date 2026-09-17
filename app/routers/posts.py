@@ -9,6 +9,7 @@ from app.auth import get_current_user
 from app.database import get_db
 from app.schemas import PaginatedPosts, PostCreate, PostResponse, PostUpdate
 from app.services import media as media_service
+from app.services import subscription as subscription_service
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
@@ -26,6 +27,8 @@ def create_post(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    subscription_service.enforce_action_limit(db, current_user, subscription_service.ACTION_CREATE_POST)
+
     post = models.Post(
         title=post_data.title,
         content=post_data.content,
@@ -113,16 +116,19 @@ async def upload_post_image(
     if post.author_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to modify this post")
 
-    new_image_path = await media_service.save_post_image(image)
-    old_image_path = post.image
+    # Below the plan's per-post image limit: add a new image to the post's
+    # gallery (Basic=1, Premium=2, Pro=unlimited -- see
+    # app/services/subscription.py). Post.image (singular) is kept in sync
+    # to the most recent upload so existing single-image consumers see the
+    # same field, behaving the same way, as before.
+    subscription_service.enforce_action_limit(db, current_user, subscription_service.ACTION_UPLOAD_IMAGE, post=post)
 
+    new_image_path = await media_service.save_post_image(image)
+
+    db.add(models.PostImage(post_id=post.id, image=new_image_path))
     post.image = new_image_path
     db.commit()
     db.refresh(post)
-
-    # Only remove the old file after the new path is safely committed, so a
-    # failed commit never leaves the post pointing at a deleted image.
-    media_service.delete_post_image(old_image_path)
     return post
 
 

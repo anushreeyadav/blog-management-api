@@ -90,6 +90,38 @@ def _get_post_from_db(session_factory, post_id: int) -> models.Post:
         db.close()
 
 
+def _grant_image_upload_plan(session_factory, username: str) -> None:
+    """
+    The Basic plan (the default every user gets at registration -- see
+    app/services/subscription.py) caps both post count and image uploads at
+    1. Several of these tests upload more than one image (or exercise
+    upload-rejection paths after other posts/uploads), which is orthogonal
+    to that plan cap, so switch the test user's active plan to one with no
+    such limits.
+    """
+    db = session_factory()
+    try:
+        user = db.query(models.User).filter(models.User.username == username).first()
+        plan = models.SubscriptionPlan(
+            name=f"Image-enabled ({username})",
+            slug=f"image-enabled-{username}",
+            price=0,
+            billing_interval="month",
+            max_posts=None,
+            max_images=None,
+            max_likes=None,
+            max_comments=None,
+            is_active=True,
+        )
+        db.add(plan)
+        db.commit()
+        db.refresh(plan)
+        user.subscription_plan_id = plan.id
+        db.commit()
+    finally:
+        db.close()
+
+
 class TestCreatePostWithoutImage:
     # 1: existing JSON create flow is untouched and still works
     def test_create_post_without_image_succeeds(self, image_client):
@@ -107,8 +139,9 @@ class TestCreatePostWithoutImage:
 class TestImageUploadValidation:
     # 2, 3: valid JPG / PNG succeed
     def test_upload_valid_jpeg_succeeds(self, image_client, _isolated_media_dir):
-        client, _ = image_client
+        client, session_factory = image_client
         _register(client, USER_A)
+        _grant_image_upload_plan(session_factory, USER_A["username"])
         headers = _auth_headers(client, USER_A)
         post = _create_post(client, headers)
 
@@ -126,8 +159,9 @@ class TestImageUploadValidation:
         assert len(stored_files) == 1
 
     def test_upload_valid_png_succeeds(self, image_client, _isolated_media_dir):
-        client, _ = image_client
+        client, session_factory = image_client
         _register(client, USER_A)
+        _grant_image_upload_plan(session_factory, USER_A["username"])
         headers = _auth_headers(client, USER_A)
         post = _create_post(client, headers)
 
@@ -140,8 +174,9 @@ class TestImageUploadValidation:
         assert resp.json()["image"].endswith(".png")
 
     def test_upload_valid_webp_succeeds(self, image_client):
-        client, _ = image_client
+        client, session_factory = image_client
         _register(client, USER_A)
+        _grant_image_upload_plan(session_factory, USER_A["username"])
         headers = _auth_headers(client, USER_A)
         post = _create_post(client, headers)
 
@@ -155,8 +190,9 @@ class TestImageUploadValidation:
 
     # 4: invalid file type rejected
     def test_upload_invalid_file_type_rejected(self, image_client):
-        client, _ = image_client
+        client, session_factory = image_client
         _register(client, USER_A)
+        _grant_image_upload_plan(session_factory, USER_A["username"])
         headers = _auth_headers(client, USER_A)
         post = _create_post(client, headers)
 
@@ -171,8 +207,9 @@ class TestImageUploadValidation:
     # are not must still be rejected -- the filename/content-type are never
     # trusted, only the sniffed magic bytes are.
     def test_upload_spoofed_extension_rejected(self, image_client):
-        client, _ = image_client
+        client, session_factory = image_client
         _register(client, USER_A)
+        _grant_image_upload_plan(session_factory, USER_A["username"])
         headers = _auth_headers(client, USER_A)
         post = _create_post(client, headers)
 
@@ -185,8 +222,9 @@ class TestImageUploadValidation:
 
     # 5: oversized file rejected
     def test_upload_oversized_file_rejected(self, image_client):
-        client, _ = image_client
+        client, session_factory = image_client
         _register(client, USER_A)
+        _grant_image_upload_plan(session_factory, USER_A["username"])
         headers = _auth_headers(client, USER_A)
         post = _create_post(client, headers)
 
@@ -225,8 +263,9 @@ class TestImageUploadValidation:
 class TestImageOwnershipAndReplacement:
     # 6: owner can upload a new image
     def test_owner_can_update_image(self, image_client):
-        client, _ = image_client
+        client, session_factory = image_client
         _register(client, USER_A)
+        _grant_image_upload_plan(session_factory, USER_A["username"])
         headers = _auth_headers(client, USER_A)
         post = _create_post(client, headers)
 
@@ -242,23 +281,30 @@ class TestImageOwnershipAndReplacement:
     def test_post_text_update_leaves_existing_image_unchanged(self, image_client):
         client, session_factory = image_client
         _register(client, USER_A)
+        _grant_image_upload_plan(session_factory, USER_A["username"])
         headers = _auth_headers(client, USER_A)
         post = _create_post(client, headers)
-        client.post(
+        upload_resp = client.post(
             f"/posts/{post['id']}/image",
             headers=headers,
             files={"image": ("cover.jpg", io.BytesIO(VALID_JPEG), "image/jpeg")},
         )
+        assert upload_resp.status_code == 200
         image_after_upload = _get_post_from_db(session_factory, post["id"]).image
+        assert image_after_upload is not None
 
         resp = client.put(f"/posts/{post['id']}", json={"title": "Updated title"}, headers=headers)
         assert resp.status_code == 200
         assert resp.json()["image"] == image_after_upload
 
-    # replacing an image removes the old file and stores the new one
-    def test_replacing_image_removes_old_file(self, image_client, _isolated_media_dir):
-        client, _ = image_client
+    # Uploading again adds a second image to the post's gallery (up to the
+    # plan's per-post limit -- see Sub-Task 8) rather than replacing the
+    # first; Post.image (singular) tracks the most recent upload for
+    # existing single-image consumers, and both files stay on disk.
+    def test_second_upload_adds_to_the_gallery_instead_of_replacing(self, image_client, _isolated_media_dir):
+        client, session_factory = image_client
         _register(client, USER_A)
+        _grant_image_upload_plan(session_factory, USER_A["username"])
         headers = _auth_headers(client, USER_A)
         post = _create_post(client, headers)
 
@@ -274,12 +320,16 @@ class TestImageOwnershipAndReplacement:
             headers=headers,
             files={"image": ("cover2.png", io.BytesIO(VALID_PNG), "image/png")},
         )
-        second_image = second.json()["image"]
+        second_body = second.json()
+        second_image = second_body["image"]
 
         assert first_image != second_image
+        assert second_body["image"] == second_image  # `image` reflects the latest upload
+        assert set(second_body["images"]) == {first_image, second_image}  # both kept in the gallery
+
         stored_files = {f.name for f in _isolated_media_dir.iterdir()}
         assert second_image.rsplit("/", 1)[-1] in stored_files
-        assert first_image.rsplit("/", 1)[-1] not in stored_files
+        assert first_image.rsplit("/", 1)[-1] in stored_files  # not deleted
 
     # 8: User B cannot attach an image to User A's post
     def test_non_owner_cannot_upload_image(self, image_client, _isolated_media_dir):
@@ -303,8 +353,9 @@ class TestImageOwnershipAndReplacement:
 class TestImageInPostResponses:
     # 9: get post with image returns the image URL
     def test_get_post_with_image_returns_url(self, image_client):
-        client, _ = image_client
+        client, session_factory = image_client
         _register(client, USER_A)
+        _grant_image_upload_plan(session_factory, USER_A["username"])
         headers = _auth_headers(client, USER_A)
         post = _create_post(client, headers)
         client.post(
@@ -343,8 +394,9 @@ class TestImageInPostResponses:
 # tmp-path equivalent of it, per the _isolated_media_dir fixture)
 class TestImagePhysicalStorage:
     def test_uploaded_file_is_written_to_posts_media_dir(self, image_client, _isolated_media_dir):
-        client, _ = image_client
+        client, session_factory = image_client
         _register(client, USER_A)
+        _grant_image_upload_plan(session_factory, USER_A["username"])
         headers = _auth_headers(client, USER_A)
         post = _create_post(client, headers)
 

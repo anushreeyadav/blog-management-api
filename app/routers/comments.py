@@ -5,6 +5,7 @@ from app import models
 from app.auth import get_current_user
 from app.database import get_db
 from app.schemas import CommentCreate, CommentResponse
+from app.services import subscription as subscription_service
 from app.services.notifications import send_comment_notification
 
 router = APIRouter(prefix="/posts", tags=["comments"])
@@ -25,6 +26,7 @@ def create_comment(
     current_user: models.User = Depends(get_current_user),
 ):
     post = _get_post_or_404(db, post_id)
+    subscription_service.enforce_action_limit(db, current_user, subscription_service.ACTION_COMMENT_ON_POST)
 
     comment = models.Comment(
         post_id=post.id,

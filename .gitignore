@@ -18,5 +18,5 @@ __pycache__/
 *.db
 *.sqlite3
 
-# Uploaded post images
+# Uploaded post images and generated invoice PDFs
 media/

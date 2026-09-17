@@ -14,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from app import models
 from app.services import notifications as notifications_module
+from app.services import subscription as subscription_service
 from app.auth import (
     ALGORITHM,
     SECRET_KEY,
@@ -34,6 +35,21 @@ from app.schemas import (
     UserRegister,
     UserResponse,
 )
+
+@pytest.fixture(autouse=True)
+def _no_basic_plan_action_limits(monkeypatch):
+    """
+    Every registered user is assigned the Basic plan by default (see
+    app/services/subscription.py), which caps post/image/like/comment
+    creation. This file tests core CRUD behavior, not plan-based limits
+    (that's tests/test_subscriptions.py's and
+    tests/test_subscription_service.py's job), and many tests here create
+    several posts/likes/comments for the same user -- so disable the cap
+    globally for this file rather than opting every such test in
+    individually.
+    """
+    monkeypatch.setattr(subscription_service, "enforce_action_limit", lambda db, user, action, **kwargs: None)
+
 
 # ---------------------------------------------------------------------------
 # Schema-level validation tests
@@ -175,6 +191,7 @@ class TestResponseSchemas:
             username = "alice"
             email = "alice@example.com"
             password_hash = "hashed-secret"
+            subscription_plan_id = 1
 
         response = UserResponse.model_validate(FakeUser())
         assert response.username == "alice"
@@ -1077,10 +1094,41 @@ class TestPostsPaginationAndSearch:
         for i in range(count):
             self._create_post(client, headers, title=f"{title_prefix} {i}", content=content)
 
+    def _grant_unlimited_plan(self, session_factory, username):
+        """
+        The Basic plan (the default every user gets at registration -- see
+        app/services/subscription.py) caps post creation. These tests
+        exercise pagination/search over many posts, which is orthogonal to
+        that cap, so switch the test user's active plan to one with no
+        post limit.
+        """
+        db = session_factory()
+        try:
+            user = db.query(models.User).filter(models.User.username == username).first()
+            plan = models.SubscriptionPlan(
+                name=f"Unlimited ({username})",
+                slug=f"unlimited-{username}",
+                price=0,
+                billing_interval="month",
+                max_posts=None,
+                max_images=None,
+                max_likes=None,
+                max_comments=None,
+                is_active=True,
+            )
+            db.add(plan)
+            db.commit()
+            db.refresh(plan)
+            user.subscription_plan_id = plan.id
+            db.commit()
+        finally:
+            db.close()
+
     # Default pagination (no query params): page=1, limit=10
     def test_default_pagination(self, security_client):
-        client, _ = security_client
+        client, session_factory = security_client
         self._register(client, self.USER_A)
+        self._grant_unlimited_plan(session_factory, self.USER_A["username"])
         headers = self._auth_headers(client, self.USER_A)
         self._create_many(client, headers, 3)
 
@@ -1095,8 +1143,9 @@ class TestPostsPaginationAndSearch:
 
     # Custom page and limit
     def test_custom_page_and_limit(self, security_client):
-        client, _ = security_client
+        client, session_factory = security_client
         self._register(client, self.USER_A)
+        self._grant_unlimited_plan(session_factory, self.USER_A["username"])
         headers = self._auth_headers(client, self.USER_A)
         self._create_many(client, headers, 15)
 
@@ -1111,8 +1160,9 @@ class TestPostsPaginationAndSearch:
 
     # Page navigation: page 2 returns the next slice, not the same posts
     def test_page_navigation_returns_different_posts(self, security_client):
-        client, _ = security_client
+        client, session_factory = security_client
         self._register(client, self.USER_A)
+        self._grant_unlimited_plan(session_factory, self.USER_A["username"])
         headers = self._auth_headers(client, self.USER_A)
         self._create_many(client, headers, 15)
 
@@ -1125,8 +1175,9 @@ class TestPostsPaginationAndSearch:
         assert page1_ids.isdisjoint(page2_ids)
 
     def test_last_page_may_be_partial(self, security_client):
-        client, _ = security_client
+        client, session_factory = security_client
         self._register(client, self.USER_A)
+        self._grant_unlimited_plan(session_factory, self.USER_A["username"])
         headers = self._auth_headers(client, self.USER_A)
         self._create_many(client, headers, 12)
 
@@ -1136,8 +1187,9 @@ class TestPostsPaginationAndSearch:
         assert len(body["items"]) == 2
 
     def test_page_beyond_last_page_returns_empty_items(self, security_client):
-        client, _ = security_client
+        client, session_factory = security_client
         self._register(client, self.USER_A)
+        self._grant_unlimited_plan(session_factory, self.USER_A["username"])
         headers = self._auth_headers(client, self.USER_A)
         self._create_many(client, headers, 3)
 
@@ -1202,8 +1254,9 @@ class TestPostsPaginationAndSearch:
 
     # Search + pagination together
     def test_search_combined_with_pagination(self, security_client):
-        client, _ = security_client
+        client, session_factory = security_client
         self._register(client, self.USER_A)
+        self._grant_unlimited_plan(session_factory, self.USER_A["username"])
         headers = self._auth_headers(client, self.USER_A)
         self._create_many(client, headers, 12, title_prefix="FastAPI Post", content="body")
         self._create_many(client, headers, 3, title_prefix="Unrelated", content="nothing")

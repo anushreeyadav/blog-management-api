@@ -17,6 +17,7 @@ import pytest
 from app import models
 from app.auth import hash_password, verify_password
 from app.database import Base
+from app.services import subscription as subscription_service
 
 REQUIRED_TABLES = {"users", "posts", "comments", "likes"}
 
@@ -56,6 +57,18 @@ def db_session(db_engine):
 
 def _raw_cursor(db_engine):
     return db_engine.raw_connection().cursor()
+
+
+def _new_user(db_session, **overrides) -> models.User:
+    """
+    User.subscription_plan_id is required (every user has an active plan --
+    see app/services/subscription.py), so tests that build a User directly
+    go through this helper rather than repeating the plan lookup everywhere.
+    """
+    defaults = dict(password_hash=hash_password("Password123"))
+    defaults.update(overrides)
+    defaults.setdefault("subscription_plan_id", subscription_service.get_or_create_basic_plan(db_session).id)
+    return models.User(**defaults)
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +159,7 @@ class TestLikeUniqueConstraint:
         assert found
 
     def test_duplicate_like_rejected_at_database_level(self, db_session):
-        user = models.User(username="dbtest", email="dbtest@example.com", password_hash=hash_password("Password123"))
+        user = _new_user(db_session, username="dbtest", email="dbtest@example.com")
         db_session.add(user)
         db_session.commit()
         post = models.Post(title="t", content="c", author_id=user.id)
@@ -174,8 +187,8 @@ class TestLikeUniqueConstraint:
 
 class TestDataPersistenceAndRelationships:
     def test_user_post_comment_like_chain_persists_with_correct_ids(self, db_session):
-        user_a = models.User(username="chain_a", email="chain_a@example.com", password_hash=hash_password("Password123"))
-        user_b = models.User(username="chain_b", email="chain_b@example.com", password_hash=hash_password("Password123"))
+        user_a = _new_user(db_session, username="chain_a", email="chain_a@example.com")
+        user_b = _new_user(db_session, username="chain_b", email="chain_b@example.com")
         db_session.add_all([user_a, user_b])
         db_session.commit()
 
@@ -203,8 +216,8 @@ class TestDataPersistenceAndRelationships:
 
     def test_password_is_hashed_not_stored_as_plaintext(self, db_session):
         plaintext = "Password123"
-        user = models.User(
-            username="hashcheck", email="hashcheck@example.com", password_hash=hash_password(plaintext)
+        user = _new_user(
+            db_session, username="hashcheck", email="hashcheck@example.com", password_hash=hash_password(plaintext)
         )
         db_session.add(user)
         db_session.commit()
@@ -221,9 +234,7 @@ class TestDataPersistenceAndRelationships:
 
 class TestNoOrphanRecords:
     def test_no_orphans_after_normal_usage(self, db_session, db_engine):
-        user = models.User(
-            username="orphan_check", email="orphan_check@example.com", password_hash=hash_password("Password123")
-        )
+        user = _new_user(db_session, username="orphan_check", email="orphan_check@example.com")
         db_session.add(user)
         db_session.commit()
         post = models.Post(title="t", content="c", author_id=user.id)
@@ -250,9 +261,7 @@ class TestNoOrphanRecords:
         assert cur.fetchall() == []
 
     def test_no_duplicate_likes_group_by_check(self, db_session, db_engine):
-        user = models.User(
-            username="group_check", email="group_check@example.com", password_hash=hash_password("Password123")
-        )
+        user = _new_user(db_session, username="group_check", email="group_check@example.com")
         db_session.add(user)
         db_session.commit()
         post = models.Post(title="t", content="c", author_id=user.id)

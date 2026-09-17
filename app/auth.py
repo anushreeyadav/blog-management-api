@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.database import get_db
 from app.schemas import UserRegister
+from app.services import subscription as subscription_service
 
 load_dotenv()
 
@@ -42,10 +43,12 @@ def get_user_by_id(db: Session, user_id: int) -> models.User | None:
 
 
 def register_user(db: Session, user_data: UserRegister) -> models.User:
+    basic_plan = subscription_service.get_or_create_basic_plan(db)
     user = models.User(
         username=user_data.username,
         email=user_data.email,
         password_hash=hash_password(user_data.password),
+        subscription_plan_id=basic_plan.id,
     )
     db.add(user)
     db.commit()
@@ -98,3 +101,9 @@ def get_current_user(
         # Token is well-formed and unexpired, but the user id doesn't exist.
         raise credentials_exception
     return user
+
+
+def get_current_admin_user(current_user: models.User = Depends(get_current_user)) -> models.User:
+    if not current_user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")
+    return current_user

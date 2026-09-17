@@ -6,6 +6,7 @@ from app import models
 from app.auth import get_current_user
 from app.database import get_db
 from app.schemas import LikeResponse
+from app.services import subscription as subscription_service
 from app.services.notifications import send_like_notification
 
 router = APIRouter(prefix="/posts", tags=["likes"])
@@ -36,6 +37,8 @@ def like_post(
 
     if _get_like(db, post_id, current_user.id) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Post already liked")
+
+    subscription_service.enforce_action_limit(db, current_user, subscription_service.ACTION_LIKE_POST)
 
     like = models.Like(post_id=post_id, user_id=current_user.id)
     db.add(like)
