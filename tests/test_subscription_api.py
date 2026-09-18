@@ -89,7 +89,7 @@ class TestCurrentSubscription:
         assert resp.status_code == 200
         body = resp.json()
         assert body["plan_name"] == "Basic"
-        assert body["price"] == 4.99
+        assert body["price"] == 499
         assert body["max_posts"] == 1
         assert body["max_images"] == 1
         assert body["max_likes"] == 5
@@ -137,7 +137,7 @@ class TestSubscribeFakeBillingFlow:
 
         invoice = body["invoice"]
         assert invoice["subscription_plan_id"] == premium_id
-        assert invoice["amount"] == 9.99
+        assert invoice["amount"] == 999
         assert invoice["status"] == "paid"
         assert invoice["transaction_id"].startswith("TXN-")
 

@@ -5,18 +5,12 @@ from sqlalchemy.orm import Session
 from app import models
 from app.auth import get_current_user
 from app.database import get_db
+from app.routers.common import get_post_or_404
 from app.schemas import LikeResponse
 from app.services import subscription as subscription_service
 from app.services.notifications import send_like_notification
 
 router = APIRouter(prefix="/posts", tags=["likes"])
-
-
-def _get_post_or_404(db: Session, post_id: int) -> models.Post:
-    post = db.query(models.Post).filter(models.Post.id == post_id).first()
-    if post is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
-    return post
 
 
 def _get_like(db: Session, post_id: int, user_id: int) -> models.Like | None:
@@ -33,7 +27,7 @@ def like_post(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    post = _get_post_or_404(db, post_id)
+    post = get_post_or_404(db, post_id)
 
     if _get_like(db, post_id, current_user.id) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Post already liked")
@@ -65,7 +59,7 @@ def unlike_post(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    _get_post_or_404(db, post_id)
+    get_post_or_404(db, post_id)
 
     like = _get_like(db, post_id, current_user.id)
     if like is None:

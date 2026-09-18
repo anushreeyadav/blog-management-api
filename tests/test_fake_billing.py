@@ -70,7 +70,7 @@ class TestNewSubscription:
         invoice = resp.json()["invoice"]
         assert invoice["user_id"] is not None
         assert invoice["subscription_plan_id"] == _plan_id(client, "premium")
-        assert invoice["amount"] == 9.99
+        assert invoice["amount"] == 999
         assert invoice["transaction_id"].startswith("TXN-")
         assert invoice["start_date"] is not None
         assert invoice["end_date"] is not None
@@ -92,7 +92,7 @@ class TestPlanUpgrade:
         resp = _subscribe(client, headers, "pro")
 
         assert resp.status_code == 201
-        assert resp.json()["invoice"]["amount"] == 19.99
+        assert resp.json()["invoice"]["amount"] == 1999
         assert resp.json()["subscription"]["plan_id"] == _plan_id(client, "pro")
 
         me = client.get("/subscriptions/me", headers=headers).json()
@@ -107,7 +107,7 @@ class TestPlanChange:
         resp = _subscribe(client, headers, "basic")
 
         assert resp.status_code == 201
-        assert resp.json()["invoice"]["amount"] == 4.99
+        assert resp.json()["invoice"]["amount"] == 499
 
         me = client.get("/subscriptions/me", headers=headers).json()
         assert me["plan_name"] == "Basic"
@@ -166,7 +166,7 @@ class TestBillingHistoryPreservation:
 
         history = _billing_history(client, headers)
         preserved = next(inv for inv in history if inv["transaction_id"] == basic_invoice["transaction_id"])
-        assert preserved["amount"] == 4.99
+        assert preserved["amount"] == 499
         assert preserved["subscription_plan_id"] == _plan_id(client, "basic")
 
 

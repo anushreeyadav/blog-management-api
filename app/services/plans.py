@@ -24,7 +24,7 @@ DEFAULT_PLANS: list[dict] = [
     dict(
         name="Basic",
         slug="basic",
-        price=4.99,
+        price=499,
         billing_interval="month",
         max_posts=1,
         max_images=1,
@@ -35,7 +35,7 @@ DEFAULT_PLANS: list[dict] = [
     dict(
         name="Premium",
         slug="premium",
-        price=9.99,
+        price=999,
         billing_interval="month",
         max_posts=2,
         max_images=2,
@@ -46,7 +46,7 @@ DEFAULT_PLANS: list[dict] = [
     dict(
         name="Pro",
         slug="pro",
-        price=19.99,
+        price=1999,
         billing_interval="month",
         max_posts=None,
         max_images=None,

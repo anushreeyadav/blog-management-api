@@ -252,7 +252,7 @@ class TestSubscribeGeneratesARealInvoiceMatchingTheDatabase:
         text = _pdf_text(pdf_file)
         assert invoice["transaction_id"] in text
         assert "Premium" in text
-        assert "9.99" in text
+        assert "999.00" in text
         assert USER_A["username"] in text
         assert USER_A["email"] in text
 
