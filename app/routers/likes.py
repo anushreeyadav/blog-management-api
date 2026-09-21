@@ -69,7 +69,11 @@ def like_post(
 
     # Don't notify a user about their own like on their own post.
     if post.author_id != current_user.id:
-        send_like_notification(post_owner_email=post.author.email, post_title=post.title)
+        send_like_notification(
+            post_owner_email=post.author.email,
+            post_title=post.title,
+            actor_username=current_user.username,
+        )
 
     return like
 

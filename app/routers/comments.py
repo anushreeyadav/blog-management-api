@@ -56,7 +56,7 @@ def create_comment(
         send_comment_notification(
             post_owner_email=post.author.email,
             post_title=post.title,
-            comment_text=comment.text,
+            actor_username=current_user.username,
         )
 
     return comment

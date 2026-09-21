@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1821,7 +1821,7 @@ class TestCommentAndLikeNotifications:
         _, kwargs = mock_notify.call_args
         assert kwargs["post_owner_email"] == self.USER_A["email"]
         assert kwargs["post_title"] == "My First Blog"
-        assert kwargs["comment_text"] == "Great post!"
+        assert kwargs["actor_username"] == self.USER_B["username"]
 
     def test_own_comment_on_own_post_does_not_trigger_notification(self, security_client):
         client, _ = security_client
@@ -1894,6 +1894,7 @@ class TestCommentAndLikeNotifications:
         _, kwargs = mock_notify.call_args
         assert kwargs["post_owner_email"] == self.USER_A["email"]
         assert kwargs["post_title"] == "My First Blog"
+        assert kwargs["actor_username"] == self.USER_B["username"]
 
     def test_own_like_on_own_post_does_not_trigger_notification(self, security_client):
         client, _ = security_client
@@ -1983,29 +1984,50 @@ class TestNotificationServiceInternals:
             notifications_module.send_email("owner@example.com", "Hi", "Body text")
 
     def test_send_comment_notification_builds_expected_subject_and_body(self):
+        """Body must follow the exact required format:
+
+            Post: "<title>"
+            User: <username>
+            Activity: Commented on your post
+            Time: <YYYY-MM-DD HH:MM AM/PM>
+
+        -- four lines, nothing else (no raw comment text)."""
         with patch.object(notifications_module, "send_email") as mock_send_email:
             notifications_module.send_comment_notification(
                 post_owner_email="owner@example.com",
-                post_title="My First Blog",
-                comment_text="Great post!",
+                post_title="FastAPI Best Practices",
+                actor_username="John Doe",
             )
         mock_send_email.assert_called_once()
         args, _ = mock_send_email.call_args
         to_email, subject, body = args
         assert to_email == "owner@example.com"
         assert subject == "New comment on your blog post"
-        assert "My First Blog" in body
-        assert "Great post!" in body
+
+        lines = body.splitlines()
+        assert lines[0] == 'Post: "FastAPI Best Practices"'
+        assert lines[1] == "User: John Doe"
+        assert lines[2] == "Activity: Commented on your post"
+        assert lines[3].startswith("Time: ")
+        # The timestamp itself must parse back as "YYYY-MM-DD HH:MM AM/PM".
+        datetime.strptime(lines[3].removeprefix("Time: "), "%Y-%m-%d %I:%M %p")
 
     def test_send_like_notification_builds_expected_subject_and_body(self):
         with patch.object(notifications_module, "send_email") as mock_send_email:
             notifications_module.send_like_notification(
                 post_owner_email="owner@example.com",
-                post_title="My First Blog",
+                post_title="FastAPI Best Practices",
+                actor_username="John Doe",
             )
         mock_send_email.assert_called_once()
         args, _ = mock_send_email.call_args
         to_email, subject, body = args
         assert to_email == "owner@example.com"
         assert subject == "Someone liked your blog post"
-        assert "My First Blog" in body
+
+        lines = body.splitlines()
+        assert lines[0] == 'Post: "FastAPI Best Practices"'
+        assert lines[1] == "User: John Doe"
+        assert lines[2] == "Activity: Liked your post"
+        assert lines[3].startswith("Time: ")
+        datetime.strptime(lines[3].removeprefix("Time: "), "%Y-%m-%d %I:%M %p")

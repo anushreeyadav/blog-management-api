@@ -1,6 +1,7 @@
 import logging
 import os
 import smtplib
+from datetime import datetime, timezone
 from email.message import EmailMessage
 
 from dotenv import load_dotenv
@@ -55,13 +56,36 @@ def send_email(to_email: str, subject: str, body: str) -> None:
         logger.exception("Failed to send email to=%s subject=%r", to_email, subject)
 
 
-def send_comment_notification(post_owner_email: str, post_title: str, comment_text: str) -> None:
+def _activity_notification_body(post_title: str, actor_username: str, activity: str) -> str:
+    """The one fixed format every like/comment notification email uses:
+
+        Post: "<title>"
+        User: <actor_username>
+        Activity: <activity>
+        Time: <YYYY-MM-DD HH:MM AM/PM>
+
+    Deliberately just these four fields, nothing else (e.g. no comment
+    text) -- kept simple, clear, and professional per spec. The
+    timestamp is captured here, at send time, in UTC -- the same
+    timezone convention already used for every other timestamp in this
+    app (Subscription/BillingHistory dates; see
+    app/routers/subscriptions.py)."""
+    when = datetime.now(timezone.utc)
+    return (
+        f'Post: "{post_title}"\n'
+        f"User: {actor_username}\n"
+        f"Activity: {activity}\n"
+        f'Time: {when.strftime("%Y-%m-%d %I:%M %p")}'
+    )
+
+
+def send_comment_notification(post_owner_email: str, post_title: str, actor_username: str) -> None:
     subject = "New comment on your blog post"
-    body = f'Someone commented on your post "{post_title}".\n\nComment:\n{comment_text}'
+    body = _activity_notification_body(post_title, actor_username, "Commented on your post")
     send_email(post_owner_email, subject, body)
 
 
-def send_like_notification(post_owner_email: str, post_title: str) -> None:
+def send_like_notification(post_owner_email: str, post_title: str, actor_username: str) -> None:
     subject = "Someone liked your blog post"
-    body = f'Someone liked your post "{post_title}".'
+    body = _activity_notification_body(post_title, actor_username, "Liked your post")
     send_email(post_owner_email, subject, body)

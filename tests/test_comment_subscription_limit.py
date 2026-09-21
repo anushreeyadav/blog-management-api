@@ -211,7 +211,7 @@ class TestExistingNotificationBehavior:
         mock_notify.assert_called_once()
         _, kwargs = mock_notify.call_args
         assert kwargs["post_owner_email"] == USER_A["email"]
-        assert kwargs["comment_text"] == "great post"
+        assert kwargs["actor_username"] == USER_B["username"]
 
     def test_own_comment_on_own_post_still_does_not_notify(self, client):
         client, _ = client
