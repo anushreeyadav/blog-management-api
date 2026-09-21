@@ -118,7 +118,7 @@ class TestPlanListing:
 
         resp = client.get("/subscriptions/plans")
         assert resp.status_code == 200
-        names = [p["name"] for p in resp.json()]
+        names = [p["name"] for p in resp.json()["plans"]]
         assert "Pro" in names
 
     def test_inactive_plans_are_excluded(self, sub_client):
@@ -143,7 +143,7 @@ class TestPlanListing:
             db.close()
 
         resp = client.get("/subscriptions/plans")
-        names = [p["name"] for p in resp.json()]
+        names = [p["name"] for p in resp.json()["plans"]]
         assert "Retired" not in names
 
 
@@ -196,7 +196,7 @@ class TestBasicPlanDefaultLimits:
         assert me_resp.status_code == 200
 
         plans_resp = client.get("/subscriptions/plans")
-        basic_plan = next(p for p in plans_resp.json() if p["slug"] == "basic")
+        basic_plan = next(p for p in plans_resp.json()["plans"] if p["slug"] == "basic")
         assert me_resp.json()["subscription_plan_id"] == basic_plan["id"]
 
     def test_basic_level_like_cap_blocks_the_next_like(self, sub_client):
@@ -276,12 +276,12 @@ class TestSubscribeLiftsLimits:
 
         resp = client.get("/subscriptions/billing-history", headers=headers)
         assert resp.status_code == 200
-        invoices = resp.json()
+        invoices = resp.json()["billing_history"]
         assert len(invoices) == 1
         assert invoices[0]["amount"] == 9.99
         assert invoices[0]["status"] == "paid"
         assert invoices[0]["transaction_id"].startswith("TXN-")
-        assert invoices[0]["invoice_path"] is not None
+        assert invoices[0]["invoice_url"] is not None
 
     def test_subscribing_again_cancels_the_previous_subscription(self, sub_client):
         client, session_factory = sub_client
@@ -295,7 +295,7 @@ class TestSubscribeLiftsLimits:
 
         resp = client.get("/subscriptions/me", headers=headers)
         assert resp.status_code == 200
-        assert resp.json()["plan_id"] == pro_id
+        assert resp.json()["plan"]["id"] == pro_id
 
     def test_subscribing_to_unknown_plan_returns_404(self, sub_client):
         client, _ = sub_client
@@ -334,8 +334,8 @@ class TestCancelSubscription:
         # see Sub-Task 11) rather than 404ing; canceling reverts to Basic.
         me_resp = client.get("/subscriptions/me", headers=headers)
         assert me_resp.status_code == 200
-        assert me_resp.json()["plan_name"] == "Basic"
-        assert me_resp.json()["subscription_status"] == "default"
+        assert me_resp.json()["plan"]["name"] == "Basic"
+        assert me_resp.json()["status"] == "default"
 
     def test_cancel_without_active_subscription_returns_404(self, sub_client):
         client, _ = sub_client

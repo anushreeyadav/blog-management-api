@@ -56,7 +56,7 @@ def _register(client: TestClient, user: dict) -> dict:
 
 
 def _plan_id(client: TestClient, slug: str) -> int:
-    plans = client.get("/subscriptions/plans").json()
+    plans = client.get("/subscriptions/plans").json()["plans"]
     return next(p["id"] for p in plans if p["slug"] == slug)
 
 
@@ -118,6 +118,40 @@ class TestCommentExceedingLimit:
             assert all(c.text != "one too many" for c in comments)
         finally:
             db.close()
+
+
+class TestPremiumUserCommentLimit:
+    """Basic and Pro's boundaries are covered above/below; Premium has its
+    own distinct max_comments (25, not Basic's 5) that must be enforced at
+    its own boundary too, not just reported correctly by GET
+    /subscriptions/usage (see test_subscription_usage.py)."""
+
+    def test_premium_user_can_post_up_to_twenty_five_comments(self, client):
+        client, _ = client
+        headers_a = _register(client, USER_A)
+        headers_b = _register(client, USER_B)
+        plan_id = _plan_id(client, "premium")
+        assert client.post("/subscriptions/subscribe", json={"plan_id": plan_id}, headers=headers_b).status_code == 201
+        post_id = _create_post(client, headers_a)
+
+        for i in range(25):
+            resp = client.post(f"/posts/{post_id}/comments", json={"text": f"comment {i}"}, headers=headers_b)
+            assert resp.status_code == 201
+
+    def test_premium_users_twenty_sixth_comment_is_rejected(self, client):
+        client, _ = client
+        headers_a = _register(client, USER_A)
+        headers_b = _register(client, USER_B)
+        plan_id = _plan_id(client, "premium")
+        assert client.post("/subscriptions/subscribe", json={"plan_id": plan_id}, headers=headers_b).status_code == 201
+        post_id = _create_post(client, headers_a)
+
+        for i in range(25):
+            assert client.post(f"/posts/{post_id}/comments", json={"text": f"comment {i}"}, headers=headers_b).status_code == 201
+
+        resp = client.post(f"/posts/{post_id}/comments", json={"text": "one too many"}, headers=headers_b)
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == LIMIT_MESSAGE
 
 
 class TestProUnlimitedComments:

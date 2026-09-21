@@ -57,7 +57,7 @@ def _register_and_login(client: TestClient) -> dict:
 
 
 def _plan_id(client: TestClient, slug: str) -> int:
-    plans = client.get("/subscriptions/plans").json()
+    plans = client.get("/subscriptions/plans").json()["plans"]
     return next(p["id"] for p in plans if p["slug"] == slug)
 
 
@@ -143,6 +143,35 @@ class TestDuplicateLikeStillProtected:
         # repeated duplicate attempts above.
         for post_id in post_ids[1:5]:
             assert client.post(f"/posts/{post_id}/like", headers=headers).status_code == 201
+
+
+class TestPremiumUserLikeLimit:
+    """Basic and Pro's boundaries are covered above/below; Premium has its
+    own distinct max_likes (25, not Basic's 5) that must be enforced at
+    its own boundary too, not just reported correctly by GET
+    /subscriptions/usage (see test_subscription_usage.py)."""
+
+    def test_premium_user_can_like_up_to_twenty_five(self, client):
+        headers = _register_and_login(client)
+        plan_id = _plan_id(client, "premium")
+        assert client.post("/subscriptions/subscribe", json={"plan_id": plan_id}, headers=headers).status_code == 201
+        post_ids = _create_posts(client, headers, 25)
+
+        for post_id in post_ids:
+            assert client.post(f"/posts/{post_id}/like", headers=headers).status_code == 201
+
+    def test_premium_users_twenty_sixth_like_is_rejected(self, client):
+        headers = _register_and_login(client)
+        plan_id = _plan_id(client, "premium")
+        assert client.post("/subscriptions/subscribe", json={"plan_id": plan_id}, headers=headers).status_code == 201
+        post_ids = _create_posts(client, headers, 26)
+
+        for post_id in post_ids[:25]:
+            assert client.post(f"/posts/{post_id}/like", headers=headers).status_code == 201
+
+        resp = client.post(f"/posts/{post_ids[25]}/like", headers=headers)
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == LIMIT_MESSAGE
 
 
 class TestProUnlimitedLikes:

@@ -66,7 +66,7 @@ def _register_and_login(client: TestClient) -> dict:
 
 
 def _plan_id(client: TestClient, slug: str) -> int:
-    plans = client.get("/subscriptions/plans").json()
+    plans = client.get("/subscriptions/plans").json()["plans"]
     return next(p["id"] for p in plans if p["slug"] == slug)
 
 

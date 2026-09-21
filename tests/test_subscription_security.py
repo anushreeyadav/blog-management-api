@@ -77,7 +77,7 @@ def _register(client: TestClient, user: dict) -> dict:
 
 
 def _plan_id(client: TestClient, slug: str) -> int:
-    plans = client.get("/subscriptions/plans").json()
+    plans = client.get("/subscriptions/plans").json()["plans"]
     return next(p["id"] for p in plans if p["slug"] == slug)
 
 
@@ -162,8 +162,8 @@ class TestCannotActAsAnotherUser:
         # /subscriptions/usage never accepts a user id -- always "me".
         usage_a = client.get("/subscriptions/usage", headers=headers_a).json()
         usage_b = client.get("/subscriptions/usage", headers=headers_b).json()
-        assert usage_a["posts"]["used"] == 1
-        assert usage_b["posts"]["used"] == 1  # not 2 -- B's request never touched A's count
+        assert usage_a["usage"]["posts"]["used"] == 1
+        assert usage_b["usage"]["posts"]["used"] == 1  # not 2 -- B's request never touched A's count
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +324,7 @@ class TestUserWithoutActiveSubscription:
         headers = _register(client, USER_A)
 
         me = client.get("/subscriptions/me", headers=headers).json()
-        assert me["subscription_status"] == "default"  # never called /subscribe
+        assert me["status"] == "default"  # never called /subscribe
 
         _create_post(client, headers, "only one")
         blocked = client.post("/posts", json={"title": "extra", "content": "c"}, headers=headers)

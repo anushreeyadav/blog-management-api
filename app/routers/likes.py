@@ -21,7 +21,28 @@ def _get_like(db: Session, post_id: int, user_id: int) -> models.Like | None:
     )
 
 
-@router.post("/{post_id}/like", response_model=LikeResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{post_id}/like",
+    response_model=LikeResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Like a post",
+    description="Likes a post for the authenticated user, gated by their subscription plan's like limit "
+    "(current active likes -- Basic=5, Premium=25, Pro=unlimited; see GET /subscriptions/usage).",
+    responses={
+        201: {"description": "The created like."},
+        401: {"description": "Missing or invalid access token."},
+        403: {
+            "description": "The user's subscription plan's like limit has been reached.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": subscription_service.LIMIT_EXCEEDED_MESSAGE}
+                }
+            },
+        },
+        404: {"description": "No post exists with this id."},
+        409: {"description": "The user has already liked this post."},
+    },
+)
 def like_post(
     post_id: int,
     db: Session = Depends(get_db),

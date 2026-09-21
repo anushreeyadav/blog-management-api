@@ -173,6 +173,10 @@ class LikeResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class SubscriptionPlanResponse(BaseModel):
+    """One subscription plan (Basic, Premium, or Pro). A `null` limit
+    field (max_posts/max_images/max_likes/max_comments) means unlimited --
+    Pro's plans always report null for all four."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -189,18 +193,45 @@ class SubscriptionPlanResponse(BaseModel):
     updated_at: datetime
 
 
+class SubscriptionPlansResponse(BaseModel):
+    """GET /subscriptions/plans -- every currently active plan, cheapest first."""
+
+    plans: list[SubscriptionPlanResponse]
+
+
 class SubscribeRequest(BaseModel):
-    # Only plan_id is ever accepted -- rejects a client-supplied "price",
-    # "max_posts", "status", etc. outright, rather than relying on it
-    # being silently discarded. The plan's real limits always come from
-    # the SubscriptionPlan row looked up server-side by plan_id (see
-    # app/routers/subscriptions.py), never from anything in this body.
+    """POST /subscriptions/subscribe's request body -- plan_id is the
+    *only* accepted field. A client-supplied "price", "max_posts",
+    "status", etc. is rejected outright (422) rather than being silently
+    discarded: the plan's real name, price, and limits always come from
+    the SubscriptionPlan row looked up server-side by plan_id (see
+    app/routers/subscriptions.py), never from anything in this body."""
+
     model_config = ConfigDict(extra="forbid")
 
-    plan_id: int
+    plan_id: int = Field(
+        ...,
+        description="ID of the subscription plan to subscribe to. See GET /subscriptions/plans for valid ids "
+        "(e.g. the Basic/Premium/Pro plans' own `id` fields). No other field is accepted -- the plan's real "
+        "name, price, and limits are always looked up server-side from this id, never taken from the request.",
+        examples=[2],
+    )
+
+
+class SubscriptionChangeRequest(SubscribeRequest):
+    """POST /subscriptions/change's request body. Identical shape to
+    SubscribeRequest (just plan_id, extra fields forbidden) -- changing
+    plans is the same operation as subscribing (see _change_subscription
+    in app/routers/subscriptions.py), so this inherits rather than
+    duplicates that validation. Kept as its own named class since the two
+    endpoints are conceptually distinct requests."""
 
 
 class SubscriptionResponse(BaseModel):
+    """A single Subscription record -- the raw row backing a user's
+    subscribe/change/cancel actions (POST /subscriptions/subscribe,
+    /change, /cancel all return or embed one of these)."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -220,21 +251,27 @@ class CurrentSubscriptionResponse(BaseModel):
     subscribed to; a user who has never called /subscribe has no formal
     Subscription row, so those come back null rather than 404ing."""
 
-    plan_id: int
-    plan_name: str
+    user_id: int
+    plan: "CurrentSubscriptionPlanResponse"
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    status: str  # the Subscription row's status, or "default" if none exists
+
+
+class CurrentSubscriptionPlanResponse(BaseModel):
+    id: int
+    name: str
     price: float
     max_posts: int | None
     max_images: int | None
     max_likes: int | None
     max_comments: int | None
-    subscription_status: str  # the Subscription row's status, or "default" if none exists
-    current_period_start: datetime | None = None
-    current_period_end: datetime | None = None
 
 
 class UsageMetric(BaseModel):
     used: int
     limit: int | None  # None = unlimited (Pro)
+    remaining: int | None  # None = unlimited (Pro)
 
 
 class SubscriptionUsageResponse(BaseModel):
@@ -244,11 +281,8 @@ class SubscriptionUsageResponse(BaseModel):
     necessity, since there's no single "the" post to report against in a
     per-user summary."""
 
-    plan: str
-    posts: UsageMetric
-    images: UsageMetric
-    likes: UsageMetric
-    comments: UsageMetric
+    plan: str | None
+    usage: dict[str, UsageMetric]
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +304,37 @@ class BillingHistoryResponse(BaseModel):
     created_at: datetime
 
 
+class BillingHistoryItem(BaseModel):
+    """One row of GET /subscriptions/billing-history -- the user-facing
+    shape (plan name, invoice_url) rather than BillingHistoryResponse's
+    raw/internal shape (plan_id, invoice_path, user_id) used by the
+    admin-only cross-user listing in app/routers/admin.py. Built from a
+    plain dict in the router rather than from_attributes, since `plan` and
+    `invoice_url` don't map 1:1 onto the BillingHistory model's own
+    attribute names (`plan.name`, `invoice_path`)."""
+
+    id: int
+    plan: str
+    transaction_id: str
+    amount: float
+    start_date: datetime
+    end_date: datetime
+    status: str
+    invoice_url: str | None = None
+    created_at: datetime
+
+
+class BillingHistoryListResponse(BaseModel):
+    """Paginated the same way GET /posts already is (page/limit/total/
+    total_pages) -- this app's one established pagination convention."""
+
+    billing_history: list[BillingHistoryItem]
+    page: int
+    limit: int
+    total: int
+    total_pages: int
+
+
 class SubscribeResponse(BaseModel):
     """POST /subscriptions/subscribe -- both the new subscription and the
     invoice/billing record it generated, so a caller never needs a second
@@ -277,3 +342,22 @@ class SubscribeResponse(BaseModel):
 
     subscription: SubscriptionResponse
     invoice: BillingHistoryResponse
+
+
+class SubscriptionChangeDetails(BaseModel):
+    plan: str
+    start_date: datetime
+    end_date: datetime
+    status: str
+
+
+class SubscriptionChangeBilling(BaseModel):
+    transaction_id: str
+    amount: float
+    invoice_url: str
+
+
+class SubscriptionChangeResponse(BaseModel):
+    message: str
+    subscription: SubscriptionChangeDetails
+    billing: SubscriptionChangeBilling

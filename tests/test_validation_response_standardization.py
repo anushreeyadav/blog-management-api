@@ -136,7 +136,7 @@ class TestLikeLimitResponse:
         # user_a is only the author of the target posts here, not the one
         # whose like-limit is under test -- give it an unlimited plan so
         # Basic's own 1-post cap doesn't get in the way of creating 6.
-        plans = client.get("/subscriptions/plans").json()
+        plans = client.get("/subscriptions/plans").json()["plans"]
         pro_id = next(p["id"] for p in plans if p["slug"] == "pro")
         client.post("/subscriptions/subscribe", json={"plan_id": pro_id}, headers=headers_a)
 

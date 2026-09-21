@@ -248,12 +248,12 @@ class TestHistoricalBillingRecordsSurvivePlanChanges:
 
         first = client.post("/subscriptions/subscribe", json={"plan_id": premium_id}, headers=headers)
         assert first.status_code == 201
-        first_invoice = client.get("/subscriptions/billing-history", headers=headers).json()[0]
+        first_invoice = client.get("/subscriptions/billing-history", headers=headers).json()["billing_history"][0]
 
         second = client.post("/subscriptions/subscribe", json={"plan_id": pro_id}, headers=headers)
         assert second.status_code == 201
 
-        invoices = client.get("/subscriptions/billing-history", headers=headers).json()
+        invoices = client.get("/subscriptions/billing-history", headers=headers).json()["billing_history"]
         assert len(invoices) == 2
         transaction_ids = {inv["transaction_id"] for inv in invoices}
         assert first_invoice["transaction_id"] in transaction_ids
@@ -285,9 +285,9 @@ class TestHistoricalBillingRecordsSurvivePlanChanges:
         finally:
             db.close()
 
-        invoices = client.get("/subscriptions/billing-history", headers=headers).json()
+        invoices = client.get("/subscriptions/billing-history", headers=headers).json()["billing_history"]
         assert len(invoices) == 1
-        assert invoices[0]["subscription_plan_id"] == plan_id
+        assert invoices[0]["plan"] == "Premium"
 
 
 # ---------------------------------------------------------------------------

@@ -183,13 +183,19 @@ def get_usage_summary(db: Session, user: models.User) -> dict:
     than a separate ad hoc "unlimited" sentinel.
     """
     plan = get_effective_plan(user)
+    def metric(used: int, limit: int | None) -> dict:
+        return {
+            "used": used,
+            "limit": limit,
+            "remaining": None if limit is None else max(limit - used, 0),
+        }
+
     return {
         "plan": plan.name if plan is not None else None,
-        "posts": {"used": _current_usage(db, user, ACTION_CREATE_POST), "limit": plan.max_posts if plan else 0},
-        "images": {"used": _current_usage(db, user, ACTION_UPLOAD_IMAGE), "limit": plan.max_images if plan else 0},
-        "likes": {"used": _current_usage(db, user, ACTION_LIKE_POST), "limit": plan.max_likes if plan else 0},
-        "comments": {
-            "used": _current_usage(db, user, ACTION_COMMENT_ON_POST),
-            "limit": plan.max_comments if plan else 0,
+        "usage": {
+            "posts": metric(_current_usage(db, user, ACTION_CREATE_POST), plan.max_posts if plan else 0),
+            "images": metric(_current_usage(db, user, ACTION_UPLOAD_IMAGE), plan.max_images if plan else 0),
+            "likes": metric(_current_usage(db, user, ACTION_LIKE_POST), plan.max_likes if plan else 0),
+            "comments": metric(_current_usage(db, user, ACTION_COMMENT_ON_POST), plan.max_comments if plan else 0),
         },
     }

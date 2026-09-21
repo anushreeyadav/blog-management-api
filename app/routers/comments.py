@@ -12,7 +12,27 @@ from app.services.notifications import send_comment_notification
 router = APIRouter(prefix="/posts", tags=["comments"])
 
 
-@router.post("/{post_id}/comments", response_model=CommentResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{post_id}/comments",
+    response_model=CommentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Comment on a post",
+    description="Adds a comment for the authenticated user, gated by their subscription plan's comment "
+    "limit (Basic=5, Premium=25, Pro=unlimited; see GET /subscriptions/usage).",
+    responses={
+        201: {"description": "The created comment."},
+        401: {"description": "Missing or invalid access token."},
+        403: {
+            "description": "The user's subscription plan's comment limit has been reached.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": subscription_service.LIMIT_EXCEEDED_MESSAGE}
+                }
+            },
+        },
+        404: {"description": "No post exists with this id."},
+    },
+)
 def create_comment(
     post_id: int,
     comment_data: CommentCreate,

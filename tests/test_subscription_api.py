@@ -48,7 +48,7 @@ def _register_and_login(client: TestClient) -> dict:
 
 
 def _plan_id(client: TestClient, slug: str) -> int:
-    plans = client.get("/subscriptions/plans").json()
+    plans = client.get("/subscriptions/plans").json()["plans"]
     return next(p["id"] for p in plans if p["slug"] == slug)
 
 
@@ -63,7 +63,9 @@ class TestListPlans:
         resp = client.get("/subscriptions/plans")
         assert resp.status_code == 200
 
-        by_slug = {p["slug"]: p for p in resp.json()}
+        body = resp.json()
+        assert set(body) == {"plans"}
+        by_slug = {p["slug"]: p for p in body["plans"]}
         assert set(by_slug) == {"basic", "premium", "pro"}
         for plan in by_slug.values():
             for field in ("name", "price", "max_posts", "max_images", "max_likes", "max_comments"):
@@ -88,16 +90,17 @@ class TestCurrentSubscription:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["plan_name"] == "Basic"
-        assert body["price"] == 499
-        assert body["max_posts"] == 1
-        assert body["max_images"] == 1
-        assert body["max_likes"] == 5
-        assert body["max_comments"] == 5
+        assert body["user_id"] == 1
+        assert body["plan"]["name"] == "Basic"
+        assert body["plan"]["price"] == 499
+        assert body["plan"]["max_posts"] == 1
+        assert body["plan"]["max_images"] == 1
+        assert body["plan"]["max_likes"] == 5
+        assert body["plan"]["max_comments"] == 5
         # Never explicitly subscribed -- no formal subscription period.
-        assert body["subscription_status"] == "default"
-        assert body["current_period_start"] is None
-        assert body["current_period_end"] is None
+        assert body["status"] == "default"
+        assert body["start_date"] is None
+        assert body["end_date"] is None
 
     def test_after_subscribing_shows_the_new_plan_and_dates(self, client):
         headers = _register_and_login(client)
@@ -108,15 +111,56 @@ class TestCurrentSubscription:
 
         assert resp.status_code == 200
         body = resp.json()
-        assert body["plan_name"] == "Premium"
-        assert body["plan_id"] == premium_id
-        assert body["subscription_status"] == "active"
-        assert body["current_period_start"] is not None
-        assert body["current_period_end"] is not None
-        assert body["current_period_start"] < body["current_period_end"]
+        assert body["user_id"] == 1
+        assert body["plan"]["name"] == "Premium"
+        assert body["plan"]["id"] == premium_id
+        assert body["status"] == "active"
+        assert body["start_date"] is not None
+        assert body["end_date"] is not None
+        assert body["start_date"] < body["end_date"]
 
     def test_requires_authentication(self, client):
         resp = client.get("/subscriptions/me")
+        assert resp.status_code == 401
+
+
+class TestChangeSubscription:
+    def test_change_creates_new_billing_record_and_invoice(self, client):
+        headers = _register_and_login(client)
+        basic_id = _plan_id(client, "basic")
+        pro_id = _plan_id(client, "pro")
+
+        first = client.post("/subscriptions/subscribe", json={"plan_id": basic_id}, headers=headers)
+        assert first.status_code == 201
+        first_transaction_id = first.json()["invoice"]["transaction_id"]
+
+        resp = client.post("/subscriptions/change", json={"plan_id": pro_id}, headers=headers)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["message"] == "Subscription changed successfully."
+        assert body["subscription"]["plan"] == "Pro"
+        assert body["subscription"]["status"] == "active"
+        assert body["subscription"]["start_date"] < body["subscription"]["end_date"]
+        assert body["billing"]["transaction_id"] != first_transaction_id
+        assert body["billing"]["amount"] == 1999
+        assert body["billing"]["invoice_url"].startswith("/media/invoices/invoice_")
+
+        history = client.get("/subscriptions/billing-history", headers=headers)
+        assert history.status_code == 200
+        assert len(history.json()["billing_history"]) == 2
+        assert {entry["transaction_id"] for entry in history.json()["billing_history"]} >= {
+            first_transaction_id,
+            body["billing"]["transaction_id"],
+        }
+
+        invoice_filename = body["billing"]["invoice_url"].rsplit("/", 1)[-1]
+        invoice_path = invoices_module.INVOICES_DIR / invoice_filename
+        assert invoice_path.is_file()
+        assert invoice_path.read_bytes().startswith(b"%PDF")
+
+    def test_change_requires_authentication(self, client):
+        resp = client.post("/subscriptions/change", json={"plan_id": 3})
         assert resp.status_code == 401
 
 
@@ -170,7 +214,7 @@ class TestSubscribeFakeBillingFlow:
         assert resp.json()["subscription"]["status"] == "active"
 
         me = client.get("/subscriptions/me", headers=headers).json()
-        assert me["plan_name"] == "Pro"
+        assert me["plan"]["name"] == "Pro"
 
     def test_invalid_plan_is_rejected(self, client):
         headers = _register_and_login(client)

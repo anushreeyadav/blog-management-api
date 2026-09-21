@@ -52,7 +52,7 @@ def _register(client: TestClient, user: dict) -> dict:
 
 
 def _plan_id(client: TestClient, slug: str) -> int:
-    plans = client.get("/subscriptions/plans").json()
+    plans = client.get("/subscriptions/plans").json()["plans"]
     return next(p["id"] for p in plans if p["slug"] == slug)
 
 
@@ -71,10 +71,12 @@ class TestBasicUserUsage:
         assert usage["plan"] == "Basic"
         assert usage == {
             "plan": "Basic",
-            "posts": {"used": 0, "limit": 1},
-            "images": {"used": 0, "limit": 1},
-            "likes": {"used": 0, "limit": 5},
-            "comments": {"used": 0, "limit": 5},
+            "usage": {
+                "posts": {"used": 0, "limit": 1, "remaining": 1},
+                "images": {"used": 0, "limit": 1, "remaining": 1},
+                "likes": {"used": 0, "limit": 5, "remaining": 5},
+                "comments": {"used": 0, "limit": 5, "remaining": 5},
+            },
         }
 
     def test_used_counts_increment_as_actions_are_taken(self, client):
@@ -90,24 +92,24 @@ class TestBasicUserUsage:
         client.post(f"/posts/{post['id']}/comments", json={"text": "nice"}, headers=headers_b)
 
         usage = _usage(client, headers)
-        assert usage["posts"]["used"] == 1
-        assert usage["images"]["used"] == 1
+        assert usage["usage"]["posts"]["used"] == 1
+        assert usage["usage"]["images"]["used"] == 1
 
         # Likes/comments here were made by USER_B against USER_A's post --
         # they count toward USER_B's usage, not USER_A's.
-        assert usage["likes"]["used"] == 0
-        assert usage["comments"]["used"] == 0
+        assert usage["usage"]["likes"]["used"] == 0
+        assert usage["usage"]["comments"]["used"] == 0
 
         usage_b = _usage(client, headers_b)
-        assert usage_b["likes"]["used"] == 1
-        assert usage_b["comments"]["used"] == 1
+        assert usage_b["usage"]["likes"]["used"] == 1
+        assert usage_b["usage"]["comments"]["used"] == 1
 
     def test_hitting_the_post_limit_is_reflected_in_usage(self, client):
         headers = _register(client, USER_A)
         client.post("/posts", json={"title": "t", "content": "c"}, headers=headers)
 
         usage = _usage(client, headers)
-        assert usage["posts"] == {"used": 1, "limit": 1}
+        assert usage["usage"]["posts"] == {"used": 1, "limit": 1, "remaining": 0}
 
 
 class TestPremiumUserUsage:
@@ -118,10 +120,10 @@ class TestPremiumUserUsage:
         usage = _usage(client, headers)
 
         assert usage["plan"] == "Premium"
-        assert usage["posts"]["limit"] == 2
-        assert usage["images"]["limit"] == 2
-        assert usage["likes"]["limit"] == 25
-        assert usage["comments"]["limit"] == 25
+        assert usage["usage"]["posts"]["limit"] == 2
+        assert usage["usage"]["images"]["limit"] == 2
+        assert usage["usage"]["likes"]["limit"] == 25
+        assert usage["usage"]["comments"]["limit"] == 25
 
     def test_images_used_sums_across_all_of_the_users_posts(self, client):
         headers = _register(client, USER_A)
@@ -139,8 +141,9 @@ class TestPremiumUserUsage:
         )
 
         usage = _usage(client, headers)
-        assert usage["posts"]["used"] == 2
-        assert usage["images"]["used"] == 2  # one on each post, summed
+        assert usage["usage"]["posts"]["used"] == 2
+        assert usage["usage"]["images"]["used"] == 2  # one on each post, summed
+        assert usage["usage"]["images"]["remaining"] == 0
 
 
 class TestProUserUsage:
@@ -151,10 +154,11 @@ class TestProUserUsage:
         usage = _usage(client, headers)
 
         assert usage["plan"] == "Pro"
-        assert usage["posts"]["limit"] is None
-        assert usage["images"]["limit"] is None
-        assert usage["likes"]["limit"] is None
-        assert usage["comments"]["limit"] is None
+        assert usage["usage"]["posts"]["limit"] is None
+        assert usage["usage"]["images"]["limit"] is None
+        assert usage["usage"]["likes"]["limit"] is None
+        assert usage["usage"]["comments"]["limit"] is None
+        assert all(metric["remaining"] is None for metric in usage["usage"].values())
 
     def test_used_counts_still_accurate_despite_no_limit(self, client):
         headers = _register(client, USER_A)
@@ -164,7 +168,7 @@ class TestProUserUsage:
             client.post("/posts", json={"title": f"p{i}", "content": "c"}, headers=headers)
 
         usage = _usage(client, headers)
-        assert usage["posts"] == {"used": 4, "limit": None}
+        assert usage["usage"]["posts"] == {"used": 4, "limit": None, "remaining": None}
 
 
 class TestUsageDoesNotExposeOtherUsers:
@@ -176,8 +180,8 @@ class TestUsageDoesNotExposeOtherUsers:
         usage_a = _usage(client, headers_a)
         usage_b = _usage(client, headers_b)
 
-        assert usage_a["posts"]["used"] == 1
-        assert usage_b["posts"]["used"] == 0
+        assert usage_a["usage"]["posts"]["used"] == 1
+        assert usage_b["usage"]["posts"]["used"] == 0
 
     def test_requires_authentication(self, client):
         resp = client.get("/subscriptions/usage")

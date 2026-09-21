@@ -17,6 +17,7 @@ API-level test (only Basic and Pro did) before this file.
 """
 
 import io
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -92,7 +93,7 @@ def _register(client: TestClient, user: dict) -> dict:
 
 
 def _plan_id(client: TestClient, slug: str) -> int:
-    return next(p["id"] for p in client.get("/subscriptions/plans").json() if p["slug"] == slug)
+    return next(p["id"] for p in client.get("/subscriptions/plans").json()["plans"] if p["slug"] == slug)
 
 
 def _subscribe(client: TestClient, headers: dict, slug: str):
@@ -376,7 +377,7 @@ class TestBilling:
         headers = _register(client, USER_A)
         _subscribe(client, headers, "basic")
         _subscribe(client, headers, "premium")
-        history = client.get("/subscriptions/billing-history", headers=headers).json()
+        history = client.get("/subscriptions/billing-history", headers=headers).json()["billing_history"]
         assert len(history) == 2
 
     def test_start_end_dates(self, client):
@@ -421,14 +422,33 @@ class TestApi:
     def test_plan_listing(self, client):
         client, _ = client
         _register(client, USER_A)  # seeds the plans in this fresh database
-        plans = client.get("/subscriptions/plans").json()
+        plans = client.get("/subscriptions/plans").json()["plans"]
         assert {p["slug"] for p in plans} == {"basic", "premium", "pro"}
 
     def test_current_subscription(self, client):
         client, _ = client
         headers = _register(client, USER_A)
         me = client.get("/subscriptions/me", headers=headers).json()
-        assert me["plan_name"] == "Basic"
+        assert me["plan"]["name"] == "Basic"
+
+    def test_expired_subscription_is_not_reported_as_active(self, client):
+        client, session_factory = client
+        headers = _register(client, USER_A)
+        assert _subscribe(client, headers, "premium").status_code == 201
+
+        db = session_factory()
+        try:
+            subscription = db.query(models.Subscription).one()
+            subscription.current_period_end = datetime.now(timezone.utc) - timedelta(days=1)
+            db.commit()
+        finally:
+            db.close()
+
+        me = client.get("/subscriptions/me", headers=headers)
+        assert me.status_code == 200
+        assert me.json()["status"] == "default"
+        assert me.json()["start_date"] is None
+        assert me.json()["end_date"] is None
 
     def test_usage_endpoint(self, client):
         client, _ = client
@@ -436,20 +456,22 @@ class TestApi:
         usage = client.get("/subscriptions/usage", headers=headers).json()
         assert usage == {
             "plan": "Basic",
-            "posts": {"used": 0, "limit": 1},
-            "images": {"used": 0, "limit": 1},
-            "likes": {"used": 0, "limit": 5},
-            "comments": {"used": 0, "limit": 5},
+            "usage": {
+                "posts": {"used": 0, "limit": 1, "remaining": 1},
+                "images": {"used": 0, "limit": 1, "remaining": 1},
+                "likes": {"used": 0, "limit": 5, "remaining": 5},
+                "comments": {"used": 0, "limit": 5, "remaining": 5},
+            },
         }
 
     def test_subscription_purchase_and_change(self, client):
         client, _ = client
         headers = _register(client, USER_A)
         assert _subscribe(client, headers, "premium").status_code == 201
-        assert client.get("/subscriptions/me", headers=headers).json()["plan_name"] == "Premium"
+        assert client.get("/subscriptions/me", headers=headers).json()["plan"]["name"] == "Premium"
 
         assert _subscribe(client, headers, "pro").status_code == 201
-        assert client.get("/subscriptions/me", headers=headers).json()["plan_name"] == "Pro"
+        assert client.get("/subscriptions/me", headers=headers).json()["plan"]["name"] == "Pro"
 
 
 # ===========================================================================
@@ -476,8 +498,8 @@ class TestSecurity:
         _subscribe(client, headers_a, "basic")
         me_a = client.get("/subscriptions/me", headers=headers_a).json()
         me_b = client.get("/subscriptions/me", headers=headers_b).json()
-        assert me_a["plan_name"] == "Basic"
-        assert me_b["plan_name"] == "Pro"  # untouched by A's actions
+        assert me_a["plan"]["name"] == "Basic"
+        assert me_b["plan"]["name"] == "Pro"  # untouched by A's actions
 
     def test_limits_enforced_server_side(self, client):
         """A client cannot influence enforcement by sending fake plan/limit

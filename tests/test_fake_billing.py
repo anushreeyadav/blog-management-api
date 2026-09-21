@@ -48,7 +48,7 @@ def _register_and_login(client: TestClient) -> dict:
 
 
 def _plan_id(client: TestClient, slug: str) -> int:
-    plans = client.get("/subscriptions/plans").json()
+    plans = client.get("/subscriptions/plans").json()["plans"]
     return next(p["id"] for p in plans if p["slug"] == slug)
 
 
@@ -57,7 +57,7 @@ def _subscribe(client: TestClient, headers: dict, slug: str):
 
 
 def _billing_history(client: TestClient, headers: dict) -> list[dict]:
-    return client.get("/subscriptions/billing-history", headers=headers).json()
+    return client.get("/subscriptions/billing-history", headers=headers).json()["billing_history"]
 
 
 class TestNewSubscription:
@@ -96,7 +96,7 @@ class TestPlanUpgrade:
         assert resp.json()["subscription"]["plan_id"] == _plan_id(client, "pro")
 
         me = client.get("/subscriptions/me", headers=headers).json()
-        assert me["plan_name"] == "Pro"
+        assert me["plan"]["name"] == "Pro"
 
 
 class TestPlanChange:
@@ -110,7 +110,7 @@ class TestPlanChange:
         assert resp.json()["invoice"]["amount"] == 499
 
         me = client.get("/subscriptions/me", headers=headers).json()
-        assert me["plan_name"] == "Basic"
+        assert me["plan"]["name"] == "Basic"
 
     def test_the_previous_subscription_is_marked_canceled_not_deleted(self, client):
         headers = _register_and_login(client)
@@ -120,7 +120,7 @@ class TestPlanChange:
         # get_active_subscription only returns the current (Premium) one --
         # confirm indirectly via /me, and that two distinct invoices exist.
         me = client.get("/subscriptions/me", headers=headers).json()
-        assert me["plan_name"] == "Premium"
+        assert me["plan"]["name"] == "Premium"
         assert len(_billing_history(client, headers)) == 2
 
 
@@ -167,7 +167,7 @@ class TestBillingHistoryPreservation:
         history = _billing_history(client, headers)
         preserved = next(inv for inv in history if inv["transaction_id"] == basic_invoice["transaction_id"])
         assert preserved["amount"] == 499
-        assert preserved["subscription_plan_id"] == _plan_id(client, "basic")
+        assert preserved["plan"] == "Basic"
 
 
 class TestSubscriptionDates:
@@ -186,8 +186,8 @@ class TestSubscriptionDates:
         start = datetime.fromisoformat(subscription["current_period_start"])
         end = datetime.fromisoformat(subscription["current_period_end"])
         assert (end - start).days == billing_service.DEFAULT_SUBSCRIPTION_DURATION_DAYS
-        assert me["current_period_start"] == subscription["current_period_start"]
-        assert me["current_period_end"] == subscription["current_period_end"]
+        assert me["start_date"] == subscription["current_period_start"]
+        assert me["end_date"] == subscription["current_period_end"]
 
     def test_invoice_billing_period_matches_the_subscription_period(self, client):
         headers = _register_and_login(client)

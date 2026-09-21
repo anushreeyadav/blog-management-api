@@ -15,7 +15,27 @@ from app.services import subscription as subscription_service
 router = APIRouter(prefix="/posts", tags=["posts"])
 
 
-@router.post("", response_model=PostResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=PostResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a post",
+    description="Creates a post for the authenticated user, gated by their subscription plan's post limit "
+    "(see GET /subscriptions/usage and GET /subscriptions/plans -- Basic/Premium cap the number of posts, "
+    "Pro is unlimited).",
+    responses={
+        201: {"description": "The created post."},
+        401: {"description": "Missing or invalid access token."},
+        403: {
+            "description": "The user's subscription plan's post limit has been reached.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": subscription_service.LIMIT_EXCEEDED_MESSAGE}
+                }
+            },
+        },
+    },
+)
 def create_post(
     post_data: PostCreate,
     db: Session = Depends(get_db),
@@ -99,7 +119,28 @@ def update_post(
     return post
 
 
-@router.post("/{post_id}/image", response_model=PostResponse)
+@router.post(
+    "/{post_id}/image",
+    response_model=PostResponse,
+    summary="Upload a post image",
+    description="Adds an image to the post's gallery, gated by the owner's subscription plan's per-post "
+    "image limit (Basic=1, Premium=2, Pro=unlimited -- see GET /subscriptions/usage).",
+    responses={
+        200: {"description": "The post, with the new image added to its gallery."},
+        401: {"description": "Missing or invalid access token."},
+        403: {
+            "description": "Either the caller doesn't own this post, or its owner's subscription plan's "
+            "image limit for this post has been reached.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": subscription_service.LIMIT_EXCEEDED_MESSAGE}
+                }
+            },
+        },
+        404: {"description": "No post exists with this id."},
+        413: {"description": "The uploaded image exceeds the maximum allowed size."},
+    },
+)
 async def upload_post_image(
     post_id: int,
     image: UploadFile = File(...),
