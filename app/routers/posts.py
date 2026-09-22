@@ -95,7 +95,16 @@ def list_my_posts(
 
 @router.get("/{post_id}", response_model=PostResponse)
 def get_post(post_id: int, db: Session = Depends(get_db)):
-    return get_post_or_404(db, post_id)
+    post = get_post_or_404(db, post_id)
+    # The only place view_count changes (see app/models.py's Post.view_count
+    # for the full policy: no dedup by visitor/session/IP, refreshes count
+    # again). update_post/upload_post_image/delete_post below all use
+    # get_post_or_404 directly rather than this handler, so none of them
+    # count as a view of the post they're acting on.
+    post.view_count += 1
+    db.commit()
+    db.refresh(post)
+    return post
 
 
 @router.put("/{post_id}", response_model=PostResponse)

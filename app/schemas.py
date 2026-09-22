@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -283,6 +283,85 @@ class SubscriptionUsageResponse(BaseModel):
 
     plan: str | None
     usage: dict[str, UsageMetric]
+
+
+# ---------------------------------------------------------------------------
+# Dashboard
+# ---------------------------------------------------------------------------
+
+class DashboardMetricsResponse(BaseModel):
+    """
+    The authenticated user's own metrics only (see
+    app/services/dashboard_service.py). All four fields are "about my
+    content": total_comments_received and total_likes_received both count
+    engagement received on the user's own posts (not, e.g., comments the
+    user wrote on someone else's post). total_views reflects
+    Post.view_count, a running total incremented on every GET
+    /posts/{id} (see app/routers/posts.py); it is not a deduplicated
+    unique-visitor count.
+    """
+
+    total_posts: int
+    total_comments_received: int
+    total_likes_received: int
+    total_views: int
+
+
+class DashboardUserInfo(BaseModel):
+    """
+    Deliberately minimal -- just enough to label whose dashboard this is.
+    Not UserResponse: this endpoint never exposes email,
+    subscription_plan_id, or any other field beyond id/username, per
+    GET /dashboard/me's "no unrelated private info" requirement.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+
+
+class PostAnalyticsItem(BaseModel):
+    """
+    One post's like/comment/view counts, for frontend charts (see
+    app/services/dashboard_service.py's get_post_analytics). views is
+    always present -- Post.view_count is tracked for every post (see
+    app/models.py) -- rather than an optional/nullable field for a
+    tracking feature that might not exist.
+    """
+
+    post_id: int
+    title: str
+    likes: int
+    comments: int
+    views: int
+
+
+class PostActivityPoint(BaseModel):
+    """
+    One calendar day's post-creation count, for a frontend line chart (see
+    app/services/dashboard_service.py's get_post_activity). `date` is
+    emitted as YYYY-MM-DD regardless of whether the database driver
+    returned a string (SQLite) or a native date object (PostgreSQL) --
+    Pydantic normalizes either into this field's date type.
+    """
+
+    date: date
+    posts: int
+
+
+class DashboardResponse(BaseModel):
+    """
+    GET /dashboard/me -- the authenticated user's own info, statistics, and
+    per-post breakdown only. There is no user_id anywhere in this path or
+    body, so another user's dashboard -- including their post_analytics and
+    post_activity -- can never be requested through this endpoint.
+    """
+
+    user: DashboardUserInfo
+    statistics: DashboardMetricsResponse
+    post_analytics: list[PostAnalyticsItem]
+    post_activity: list[PostActivityPoint]
 
 
 # ---------------------------------------------------------------------------

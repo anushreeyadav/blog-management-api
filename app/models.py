@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -47,9 +47,25 @@ class Post(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    author_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    # Indexed -- every dashboard query (app/services/dashboard_service.py)
+    # and GET /posts/mine filters on this column; without an index each
+    # becomes a full table scan of posts as the table grows.
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     image: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Incremented once per GET /posts/{id} request (see app/routers/posts.py).
+    # A simple running total, not a per-viewer log -- deliberately NOT
+    # deduplicated by visitor/session/IP: a page refresh, or the same
+    # caller fetching the post twice, increments this again each time.
+    # This matches how max_likes/max_comments already count live totals
+    # rather than deduplicated histories elsewhere in this app, and avoids
+    # the real complexity a unique-view counter would add (a session/IP
+    # log, a time window, etc.) for a metric this project doesn't need to
+    # be that precise about. GET /posts/{id} is public/unauthenticated, so
+    # this also counts the author's own views of their own post -- there
+    # is no reliable "is this the owner" check available on an anonymous
+    # request without adding auth to a route that's deliberately public.
+    view_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     author: Mapped["User"] = relationship(back_populates="posts")
     comments: Mapped[list["Comment"]] = relationship(
@@ -86,8 +102,15 @@ class Comment(Base):
     __tablename__ = "comments"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    post_id: Mapped[int] = mapped_column(ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    # Indexed -- GET /posts/{id}/comments (app/routers/comments.py) and the
+    # dashboard (app/services/dashboard_service.py's get_post_analytics and
+    # get_total_comments_received) both group/filter/join comments by
+    # post_id.
+    post_id: Mapped[int] = mapped_column(ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Indexed -- the subscription plan's comment-limit check
+    # (app/services/subscription.py's _current_usage) filters comments by
+    # user_id.
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

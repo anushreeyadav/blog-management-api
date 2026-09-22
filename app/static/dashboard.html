@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>User Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --surface-page:   #f9f9f7;
+    --surface-card:   #ffffff;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11, 11, 11, 0.10);
+    --series-1:       #2a78d6; /* likes / posts */
+    --series-2:       #eb6834; /* comments */
+    --danger:         #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --surface-page:   #0d0d0d;
+      --surface-card:   #232322;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255, 255, 255, 0.10);
+      --series-1:       #3987e5;
+      --series-2:       #d95926;
+      --danger:         #e66767;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--surface-page);
+    color: var(--text-primary);
+  }
+
+  .page {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 24px 16px 64px;
+  }
+
+  header.top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+
+  h1 {
+    font-size: 22px;
+    margin: 0;
+  }
+
+  #whoami {
+    color: var(--text-secondary);
+    font-size: 14px;
+  }
+
+  #logout-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    display: none;
+  }
+  #logout-btn:hover { color: var(--text-primary); border-color: var(--text-muted); }
+
+  /* --- Login panel --- */
+  #login-panel {
+    max-width: 360px;
+    margin: 64px auto;
+    background: var(--surface-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+  }
+  #login-panel h2 {
+    margin: 0 0 4px;
+    font-size: 18px;
+  }
+  #login-panel p.hint {
+    margin: 0 0 20px;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+  #login-panel label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 12px 0 4px;
+  }
+  #login-panel input {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text-primary);
+    font-size: 14px;
+  }
+  #login-panel button {
+    width: 100%;
+    margin-top: 20px;
+    padding: 10px;
+    border-radius: 6px;
+    border: none;
+    background: var(--series-1);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #login-panel button:disabled { opacity: 0.6; cursor: default; }
+  #login-error {
+    color: var(--danger);
+    font-size: 13px;
+    margin-top: 12px;
+    display: none;
+  }
+
+  /* --- KPI row --- */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  @media (max-width: 640px) {
+    .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  }
+  .stat-tile {
+    background: var(--surface-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .stat-tile .label {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .stat-tile .value {
+    font-size: 28px;
+    font-weight: 600;
+    margin-top: 4px;
+    font-variant-numeric: proportional-nums;
+  }
+
+  /* --- Chart cards --- */
+  .charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .chart-card.full { grid-column: 1 / -1; }
+  @media (max-width: 800px) {
+    .charts { grid-template-columns: 1fr; }
+  }
+  .chart-card {
+    background: var(--surface-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .chart-card .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .chart-card h2 {
+    font-size: 15px;
+    margin: 0;
+  }
+  .table-toggle {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .table-toggle:hover { color: var(--text-primary); border-color: var(--text-muted); }
+
+  .chart-wrap { height: 260px; }
+  .chart-wrap.hidden { display: none; }
+
+  .data-table { display: none; width: 100%; border-collapse: collapse; font-size: 13px; }
+  .data-table.visible { display: table; }
+  .data-table th, .data-table td {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--gridline);
+    color: var(--text-secondary);
+  }
+  .data-table th { color: var(--text-muted); font-weight: 600; }
+  .data-table td:not(:first-child), .data-table th:not(:first-child) {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .empty-state {
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 32px 8px;
+    text-align: center;
+  }
+
+  /* --- Page-level empty state: the user has no posts at all --- */
+  #empty-state {
+    display: none;
+    background: var(--surface-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 56px 24px;
+    text-align: center;
+  }
+  #empty-state h2 {
+    font-size: 17px;
+    margin: 0 0 6px;
+  }
+  #empty-state p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 14px;
+  }
+
+  #dashboard { display: none; }
+
+  /* --- Loading state --- */
+  #loading {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--text-secondary);
+    padding: 64px 0;
+    font-size: 14px;
+  }
+  .spinner {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    border-top-color: var(--series-1);
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* --- Error state --- */
+  #load-error {
+    display: none;
+    background: var(--surface-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 32px 24px;
+    text-align: center;
+  }
+  #load-error p {
+    color: var(--danger);
+    font-size: 14px;
+    margin: 0 0 16px;
+  }
+  #retry-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #retry-btn:hover { border-color: var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div id="login-panel">
+    <h2>User Dashboard</h2>
+    <p class="hint">Sign in with your Blog Management API account.</p>
+    <label for="login-username">Username</label>
+    <input id="login-username" type="text" autocomplete="username" />
+    <label for="login-password">Password</label>
+    <input id="login-password" type="password" autocomplete="current-password" />
+    <button id="login-btn" type="button">Log in</button>
+    <p id="login-error"></p>
+  </div>
+
+  <div id="app" style="display:none">
+    <header class="top">
+      <h1>My Dashboard</h1>
+      <div>
+        <span id="whoami"></span>
+        <button id="logout-btn" type="button">Log out</button>
+      </div>
+    </header>
+
+    <div id="loading"><span class="spinner" aria-hidden="true"></span> Loading your dashboard…</div>
+
+    <div id="load-error">
+      <p id="load-error-message"></p>
+      <button id="retry-btn" type="button">Retry</button>
+    </div>
+
+    <div id="empty-state">
+      <h2>You haven't created any posts yet.</h2>
+      <p>Create your first post to start seeing your analytics.</p>
+    </div>
+
+    <div id="dashboard">
+      <section class="kpi-row" id="kpi-row">
+        <div class="stat-tile"><div class="label">Total posts</div><div class="value" id="stat-posts">–</div></div>
+        <div class="stat-tile"><div class="label">Total comments received</div><div class="value" id="stat-comments">–</div></div>
+        <div class="stat-tile"><div class="label">Total likes received</div><div class="value" id="stat-likes">–</div></div>
+        <div class="stat-tile"><div class="label">Total views</div><div class="value" id="stat-views">–</div></div>
+      </section>
+
+      <section class="charts">
+        <div class="chart-card full" id="card-post-analytics">
+          <div class="card-head">
+            <h2>Likes &amp; Comments Per Post</h2>
+            <button class="table-toggle" data-target="post-analytics">View as table</button>
+          </div>
+          <div class="chart-wrap"><canvas id="chart-post-analytics"></canvas></div>
+          <table class="data-table" id="table-post-analytics">
+            <thead><tr><th>Post</th><th>Likes</th><th>Comments</th><th>Views</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="chart-card" id="card-engagement">
+          <div class="card-head">
+            <h2>Engagement distribution</h2>
+            <button class="table-toggle" data-target="engagement">View as table</button>
+          </div>
+          <div class="chart-wrap"><canvas id="chart-engagement"></canvas></div>
+          <table class="data-table" id="table-engagement">
+            <thead><tr><th>Type</th><th>Count</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="chart-card" id="card-activity">
+          <div class="card-head">
+            <h2>Post Activity Over Time</h2>
+            <button class="table-toggle" data-target="activity">View as table</button>
+          </div>
+          <div class="chart-wrap"><canvas id="chart-activity"></canvas></div>
+          <table class="data-table" id="table-activity">
+            <thead><tr><th>Date</th><th>Posts</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var TOKEN_KEY = "dashboard_access_token";
+  var charts = {};
+
+  var style = getComputedStyle(document.documentElement);
+  var COLOR_1 = style.getPropertyValue("--series-1").trim();
+  var COLOR_2 = style.getPropertyValue("--series-2").trim();
+  var TEXT_SECONDARY = style.getPropertyValue("--text-secondary").trim();
+  var GRIDLINE = style.getPropertyValue("--gridline").trim();
+  var SURFACE_CARD = style.getPropertyValue("--surface-card").trim();
+
+  function withAlpha(hex, alpha) {
+    var r = parseInt(hex.slice(1, 3), 16);
+    var g = parseInt(hex.slice(3, 5), 16);
+    var b = parseInt(hex.slice(5, 7), 16);
+    return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
+  }
+
+  function formatCompact(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
+    if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "K";
+    return String(n);
+  }
+
+  function el(id) { return document.getElementById(id); }
+
+  function show(id, display) { el(id).style.display = display || "block"; }
+  function hide(id) { el(id).style.display = "none"; }
+
+  // --- Auth -----------------------------------------------------------
+
+  function getToken() {
+    try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; }
+  }
+  function setToken(token) {
+    try { localStorage.setItem(TOKEN_KEY, token); } catch (e) { /* private mode, etc. */ }
+  }
+  function clearToken() {
+    try { localStorage.removeItem(TOKEN_KEY); } catch (e) { /* ignore */ }
+  }
+
+  async function login(username, password) {
+    var res = await fetch("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: username, password: password }),
+    });
+    if (!res.ok) {
+      var body = await res.json().catch(function () { return {}; });
+      throw new Error(body.detail || "Login failed");
+    }
+    var data = await res.json();
+    return data.access_token;
+  }
+
+  async function fetchDashboard(token) {
+    var res = await fetch("/dashboard/me", {
+      headers: { Authorization: "Bearer " + token },
+    });
+    if (res.status === 401) {
+      throw new Error("SESSION_EXPIRED");
+    }
+    if (!res.ok) {
+      throw new Error("Could not load dashboard data.");
+    }
+    return res.json();
+  }
+
+  // --- Rendering --------------------------------------------------------
+
+  function renderStats(stats) {
+    el("stat-posts").textContent = formatCompact(stats.total_posts);
+    el("stat-comments").textContent = formatCompact(stats.total_comments_received);
+    el("stat-likes").textContent = formatCompact(stats.total_likes_received);
+    el("stat-views").textContent = formatCompact(stats.total_views);
+  }
+
+  function destroyChart(key) {
+    if (charts[key]) {
+      charts[key].destroy();
+      delete charts[key];
+    }
+  }
+
+  function scaleOptions(xTitle, yTitle) {
+    return {
+      x: {
+        grid: { display: false },
+        ticks: { color: TEXT_SECONDARY },
+        title: { display: true, text: xTitle, color: TEXT_SECONDARY },
+      },
+      y: {
+        beginAtZero: true,
+        ticks: { color: TEXT_SECONDARY, precision: 0 },
+        grid: { color: GRIDLINE },
+        title: { display: true, text: yTitle, color: TEXT_SECONDARY },
+      },
+    };
+  }
+
+  function renderPostAnalytics(items) {
+    var card = el("card-post-analytics");
+    var tbody = el("table-post-analytics").querySelector("tbody");
+    tbody.innerHTML = "";
+
+    if (!items.length) {
+      el("chart-post-analytics").parentElement.classList.add("hidden");
+      el("table-post-analytics").classList.remove("visible");
+      card.querySelector(".table-toggle").style.display = "none";
+      var empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "No posts yet -- create a post to see per-post analytics.";
+      card.appendChild(empty);
+      return;
+    }
+
+    var labels = items.map(function (p) { return p.title; });
+    var likes = items.map(function (p) { return p.likes; });
+    var comments = items.map(function (p) { return p.comments; });
+
+    items.forEach(function (p) {
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td>" + escapeHtml(p.title) + "</td><td>" + p.likes + "</td><td>" + p.comments + "</td><td>" + p.views + "</td>";
+      tbody.appendChild(tr);
+    });
+
+    destroyChart("postAnalytics");
+    charts.postAnalytics = new Chart(el("chart-post-analytics"), {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [
+          { label: "Likes", data: likes, backgroundColor: COLOR_1, borderRadius: 4, maxBarThickness: 24 },
+          { label: "Comments", data: comments, backgroundColor: COLOR_2, borderRadius: 4, maxBarThickness: 24 },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: { legend: { display: true, position: "top", labels: { color: TEXT_SECONDARY } } },
+        scales: scaleOptions("Post", "Count"),
+      },
+    });
+  }
+
+  function renderEngagement(items) {
+    var card = el("card-engagement");
+    var tbody = el("table-engagement").querySelector("tbody");
+    tbody.innerHTML = "";
+
+    var totalLikes = items.reduce(function (sum, p) { return sum + p.likes; }, 0);
+    var totalComments = items.reduce(function (sum, p) { return sum + p.comments; }, 0);
+
+    if (totalLikes + totalComments === 0) {
+      el("chart-engagement").parentElement.classList.add("hidden");
+      card.querySelector(".table-toggle").style.display = "none";
+      var empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "No likes or comments received yet.";
+      card.appendChild(empty);
+      return;
+    }
+
+    [["Likes received", totalLikes], ["Comments received", totalComments]].forEach(function (row) {
+      var tr = document.createElement("tr");
+      tr.innerHTML = "<td>" + row[0] + "</td><td>" + row[1] + "</td>";
+      tbody.appendChild(tr);
+    });
+
+    destroyChart("engagement");
+    charts.engagement = new Chart(el("chart-engagement"), {
+      type: "doughnut",
+      data: {
+        labels: ["Likes received", "Comments received"],
+        datasets: [{ data: [totalLikes, totalComments], backgroundColor: [COLOR_1, COLOR_2] }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: true, position: "bottom", labels: { color: TEXT_SECONDARY } } },
+      },
+    });
+  }
+
+  function renderActivity(points) {
+    var card = el("card-activity");
+    var tbody = el("table-activity").querySelector("tbody");
+    tbody.innerHTML = "";
+
+    if (!points.length) {
+      el("chart-activity").parentElement.classList.add("hidden");
+      card.querySelector(".table-toggle").style.display = "none";
+      var empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "No post activity yet -- create a post to start the trend.";
+      card.appendChild(empty);
+      return;
+    }
+
+    points.forEach(function (p) {
+      var tr = document.createElement("tr");
+      tr.innerHTML = "<td>" + p.date + "</td><td>" + p.posts + "</td>";
+      tbody.appendChild(tr);
+    });
+
+    destroyChart("activity");
+    charts.activity = new Chart(el("chart-activity"), {
+      type: "line",
+      data: {
+        labels: points.map(function (p) { return p.date; }),
+        datasets: [
+          {
+            label: "Posts created",
+            data: points.map(function (p) { return p.posts; }),
+            borderColor: COLOR_1,
+            backgroundColor: withAlpha(COLOR_1, 0.1),
+            fill: true,
+            tension: 0.25,
+            borderWidth: 2,
+            pointRadius: 4,
+            pointBackgroundColor: COLOR_1,
+            pointBorderColor: SURFACE_CARD,
+            pointBorderWidth: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: { legend: { display: false } },
+        scales: scaleOptions("Date", "Posts created"),
+      },
+    });
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function renderDashboard(data) {
+    el("whoami").textContent = data.user.username;
+
+    // A user with zero posts has nothing meaningful for any chart to show
+    // -- one clear page-level message beats three separate tiny "no data"
+    // notes scattered across otherwise-empty chart cards.
+    if (data.statistics.total_posts === 0) {
+      hide("dashboard");
+      show("empty-state");
+      return;
+    }
+    hide("empty-state");
+
+    renderStats(data.statistics);
+    renderPostAnalytics(data.post_analytics);
+    renderEngagement(data.post_analytics);
+    renderActivity(data.post_activity);
+    show("dashboard");
+  }
+
+  // --- Table-view toggles -------------------------------------------
+
+  document.addEventListener("click", function (evt) {
+    var btn = evt.target.closest(".table-toggle");
+    if (!btn) return;
+    var key = btn.getAttribute("data-target");
+    var chartWrap = document.getElementById("chart-" + key).parentElement;
+    var table = document.getElementById("table-" + key);
+    var showingTable = table.classList.toggle("visible");
+    chartWrap.classList.toggle("hidden", showingTable);
+    btn.textContent = showingTable ? "View chart" : "View as table";
+  });
+
+  // --- Boot flow -------------------------------------------------------
+
+  var lastToken = null;
+
+  async function loadDashboard(token) {
+    lastToken = token;
+    hide("dashboard");
+    hide("empty-state");
+    hide("load-error");
+    show("loading", "flex");
+    try {
+      var data = await fetchDashboard(token);
+      hide("loading");
+      renderDashboard(data);
+    } catch (err) {
+      hide("loading");
+      if (err.message === "SESSION_EXPIRED") {
+        clearToken();
+        showLogin();
+        return;
+      }
+      el("load-error-message").textContent = err.message || "Something went wrong loading your dashboard.";
+      show("load-error");
+    }
+  }
+
+  el("retry-btn").addEventListener("click", function () {
+    if (lastToken) loadDashboard(lastToken);
+  });
+
+  function showApp(token) {
+    el("login-panel").style.display = "none";
+    el("app").style.display = "";
+    // #logout-btn defaults to display: none in the stylesheet, so clearing
+    // the inline style (style.display = "") would fall back to that rule
+    // and leave it invisible -- see the equivalent fix to show() above.
+    el("logout-btn").style.display = "inline-block";
+    loadDashboard(token);
+  }
+
+  function showLogin() {
+    el("app").style.display = "none";
+    el("login-panel").style.display = "";
+    el("logout-btn").style.display = "none";
+  }
+
+  el("login-btn").addEventListener("click", async function () {
+    var username = el("login-username").value.trim();
+    var password = el("login-password").value;
+    var errorEl = el("login-error");
+    errorEl.style.display = "none";
+
+    if (!username || !password) {
+      errorEl.textContent = "Enter your username and password.";
+      errorEl.style.display = "block";
+      return;
+    }
+
+    el("login-btn").disabled = true;
+    try {
+      var token = await login(username, password);
+      setToken(token);
+      showApp(token);
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.style.display = "block";
+    } finally {
+      el("login-btn").disabled = false;
+    }
+  });
+
+  el("login-password").addEventListener("keydown", function (evt) {
+    if (evt.key === "Enter") el("login-btn").click();
+  });
+
+  el("logout-btn").addEventListener("click", function () {
+    clearToken();
+    Object.keys(charts).forEach(destroyChart);
+    showLogin();
+  });
+
+  var existingToken = getToken();
+  if (existingToken) {
+    showApp(existingToken);
+  } else {
+    showLogin();
+  }
+})();
+</script>
+</body>
+</html>

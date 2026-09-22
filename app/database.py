@@ -55,3 +55,39 @@ def ensure_post_image_column() -> None:
         return
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE posts ADD COLUMN image VARCHAR(500)"))
+
+
+def ensure_post_view_count_column() -> None:
+    """
+    Same situation as ensure_post_image_column above, for the view_count
+    column added later (see app/models.py's Post.view_count): a database
+    created before that column existed needs it backfilled by hand.
+    Existing rows get view_count = 0, same as any newly created post.
+    """
+    inspector = inspect(engine)
+    if "posts" not in inspector.get_table_names():
+        return
+    columns = {col["name"] for col in inspector.get_columns("posts")}
+    if "view_count" in columns:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE posts ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0"))
+
+
+def ensure_dashboard_indexes() -> None:
+    """
+    Same situation as ensure_post_image_column above: a database created
+    before the dashboard's performance indexes were added (see
+    app/models.py's Post.author_id / Comment.post_id / Comment.user_id)
+    never gets them from Base.metadata.create_all alone. CREATE INDEX IF
+    NOT EXISTS makes this safe to call on every startup, on a database
+    that already has them or not.
+    """
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if "posts" not in existing_tables or "comments" not in existing_tables:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_posts_author_id ON posts (author_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_comments_post_id ON comments (post_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_comments_user_id ON comments (user_id)"))
