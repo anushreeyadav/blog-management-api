@@ -20,6 +20,7 @@
     --series-1:       #2a78d6; /* likes / posts */
     --series-2:       #eb6834; /* comments */
     --danger:         #d03b3b;
+    --surface-unread: #eaf2fc;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -36,6 +37,7 @@
       --series-1:       #3987e5;
       --series-2:       #d95926;
       --danger:         #e66767;
+      --surface-unread: #16273b;
     }
   }
 
@@ -84,6 +86,134 @@
     display: none;
   }
   #logout-btn:hover { color: var(--text-primary); border-color: var(--text-muted); }
+
+  /* --- Notification bell --- */
+  .notif-wrap {
+    position: relative;
+    display: none; /* shown alongside #logout-btn once logged in */
+    align-items: center;
+  }
+  .notif-bell {
+    position: relative;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    border-radius: 6px;
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .notif-bell:hover { color: var(--text-primary); border-color: var(--text-muted); }
+  .notif-bell svg { width: 17px; height: 17px; }
+  .notif-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    display: none;
+  }
+
+  .notif-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: min(360px, calc(100vw - 32px));
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    z-index: 20;
+    overflow: hidden;
+  }
+  .notif-dropdown[hidden] { display: none; }
+  .notif-dropdown-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--gridline);
+    flex: none;
+  }
+  .notif-dropdown-head .table-toggle { font-weight: 400; }
+  .notif-error {
+    display: none;
+    margin: 0;
+    padding: 8px 14px;
+    font-size: 12px;
+    color: var(--danger);
+    border-bottom: 1px solid var(--gridline);
+    flex: none;
+  }
+  .notif-list {
+    overflow-y: auto;
+    flex: 1 1 auto;
+  }
+  .notif-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--gridline);
+    padding: 10px 14px;
+    cursor: pointer;
+    font: inherit;
+    color: var(--text-primary);
+  }
+  .notif-item:last-child { border-bottom: none; }
+  .notif-item:hover { background: var(--surface-1); }
+  .notif-item.unread { background: var(--surface-unread); }
+  .notif-item .notif-message {
+    font-size: 13px;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .notif-item.unread .notif-message { font-weight: 600; }
+  .notif-item .unread-dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    margin-top: 4px;
+    border-radius: 50%;
+    background: var(--series-1);
+    visibility: hidden;
+  }
+  .notif-item.unread .unread-dot { visibility: visible; }
+  .notif-item .notif-time {
+    display: block;
+    margin-top: 4px;
+    margin-left: 13px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .notif-empty {
+    padding: 24px 14px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  @media (max-width: 480px) {
+    .notif-dropdown { position: fixed; top: 60px; left: 16px; right: 16px; width: auto; }
+  }
 
   /* --- Login panel --- */
   #login-panel {
@@ -312,6 +442,24 @@
     <header class="top">
       <h1>My Dashboard</h1>
       <div>
+        <div class="notif-wrap" id="notif-wrap">
+          <button id="notif-bell-btn" type="button" class="notif-bell" aria-haspopup="true" aria-expanded="false" aria-label="Notifications">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+            <span id="notif-badge" class="notif-badge">0</span>
+          </button>
+          <div id="notif-dropdown" class="notif-dropdown" role="menu" hidden>
+            <div class="notif-dropdown-head">
+              <span>Notifications</span>
+              <button id="notif-mark-all-btn" type="button" class="table-toggle">Mark all as read</button>
+            </div>
+            <p id="notif-error" class="notif-error"></p>
+            <div id="notif-list" class="notif-list"></div>
+            <div id="notif-empty" class="notif-empty">No notifications yet.</div>
+          </div>
+        </div>
         <span id="whoami"></span>
         <button id="logout-btn" type="button">Log out</button>
       </div>
@@ -446,6 +594,38 @@
     }
     if (!res.ok) {
       throw new Error("Could not load dashboard data.");
+    }
+    return res.json();
+  }
+
+  async function fetchNotifications(token) {
+    var res = await fetch("/notifications/", {
+      headers: { Authorization: "Bearer " + token },
+    });
+    if (!res.ok) {
+      throw new Error("Could not load notifications.");
+    }
+    return res.json();
+  }
+
+  async function markNotificationRead(token, id) {
+    var res = await fetch("/notifications/" + id + "/read", {
+      method: "PATCH",
+      headers: { Authorization: "Bearer " + token },
+    });
+    if (!res.ok) {
+      throw new Error("Could not mark notification as read.");
+    }
+    return res.json();
+  }
+
+  async function markAllNotificationsRead(token) {
+    var res = await fetch("/notifications/read-all", {
+      method: "PATCH",
+      headers: { Authorization: "Bearer " + token },
+    });
+    if (!res.ok) {
+      throw new Error("Could not mark all notifications as read.");
     }
     return res.json();
   }
@@ -626,6 +806,174 @@
     return div.innerHTML;
   }
 
+  // --- Notification bell ----------------------------------------------
+
+  function formatNotifTime(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleString(undefined, {
+      month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+    });
+  }
+
+  function updateNotifBadge(unreadCount) {
+    var badge = el("notif-badge");
+    if (unreadCount > 0) {
+      badge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
+      badge.style.display = "block";
+    } else {
+      badge.style.display = "none";
+    }
+  }
+
+  function showNotifError(message) {
+    var errorEl = el("notif-error");
+    errorEl.textContent = message;
+    errorEl.style.display = "block";
+  }
+
+  function hideNotifError() {
+    el("notif-error").style.display = "none";
+  }
+
+  function renderNotifications(data) {
+    var list = el("notif-list");
+    list.innerHTML = "";
+
+    if (!data.notifications.length) {
+      show("notif-empty");
+    } else {
+      hide("notif-empty");
+      data.notifications.forEach(function (n) {
+        var item = document.createElement("button");
+        item.type = "button";
+        item.className = "notif-item" + (n.is_read ? "" : " unread");
+        item.setAttribute("role", "menuitem");
+        item.dataset.id = n.id;
+        item.innerHTML =
+          '<span class="notif-message"><span class="unread-dot" aria-hidden="true"></span>' +
+          "<span>" + escapeHtml(n.message) + "</span></span>" +
+          '<span class="notif-time">' + escapeHtml(formatNotifTime(n.created_at)) + "</span>";
+        list.appendChild(item);
+      });
+    }
+
+    updateNotifBadge(data.unread_count);
+  }
+
+  async function loadNotifications(token) {
+    try {
+      var data = await fetchNotifications(token);
+      hideNotifError();
+      renderNotifications(data);
+    } catch (e) {
+      // Non-critical: leave the bell in its last-known state (badge count,
+      // any already-rendered list) rather than clearing it out, and surface
+      // a small inline message only if the dropdown is actually open for
+      // the user to see it.
+      if (!el("notif-dropdown").hidden) {
+        showNotifError("Couldn't load notifications. Please try again.");
+      }
+    }
+  }
+
+  // Polling keeps the badge/list feeling current without WebSockets, at a
+  // fixed 20s cadence (within the 15-30s range) -- a single timer only:
+  // startNotifPolling always clears any existing one first, so repeated
+  // calls (e.g. a second showApp) can never stack up multiple intervals.
+  // It's paused via the Page Visibility API whenever the tab isn't
+  // actually visible, so a backgrounded tab issues zero requests instead
+  // of quietly polling in the background forever.
+  var NOTIF_POLL_INTERVAL_MS = 20000;
+  var notifPollTimerId = null;
+
+  function startNotifPolling(token) {
+    stopNotifPolling();
+    notifPollTimerId = window.setInterval(function () {
+      loadNotifications(token);
+    }, NOTIF_POLL_INTERVAL_MS);
+  }
+
+  function stopNotifPolling() {
+    if (notifPollTimerId !== null) {
+      window.clearInterval(notifPollTimerId);
+      notifPollTimerId = null;
+    }
+  }
+
+  document.addEventListener("visibilitychange", function () {
+    if (!lastToken) return; // logged out -- nothing to poll
+    if (document.hidden) {
+      stopNotifPolling();
+    } else {
+      loadNotifications(lastToken); // catch up immediately on return
+      startNotifPolling(lastToken);
+    }
+  });
+
+  function openNotifDropdown() {
+    el("notif-dropdown").hidden = false;
+    el("notif-bell-btn").setAttribute("aria-expanded", "true");
+    if (lastToken) loadNotifications(lastToken);
+  }
+
+  function closeNotifDropdown() {
+    el("notif-dropdown").hidden = true;
+    el("notif-bell-btn").setAttribute("aria-expanded", "false");
+  }
+
+  el("notif-bell-btn").addEventListener("click", function (evt) {
+    evt.stopPropagation();
+    if (el("notif-dropdown").hidden) {
+      openNotifDropdown();
+    } else {
+      closeNotifDropdown();
+    }
+  });
+
+  el("notif-list").addEventListener("click", async function (evt) {
+    var item = evt.target.closest(".notif-item");
+    if (!item || !item.classList.contains("unread") || !lastToken) return;
+    var id = item.dataset.id;
+    try {
+      await markNotificationRead(lastToken, id);
+      hideNotifError();
+      item.classList.remove("unread");
+      var currentUnread = parseInt(el("notif-badge").textContent, 10);
+      var newUnread = Math.max(0, (isNaN(currentUnread) ? 0 : currentUnread) - 1);
+      updateNotifBadge(newUnread);
+    } catch (e) {
+      // Leave the item as unread -- the click can simply be retried.
+      showNotifError("Couldn't mark that notification as read. Please try again.");
+    }
+  });
+
+  el("notif-mark-all-btn").addEventListener("click", async function (evt) {
+    evt.stopPropagation();
+    if (!lastToken) return;
+    try {
+      await markAllNotificationsRead(lastToken);
+      hideNotifError();
+      el("notif-list").querySelectorAll(".notif-item.unread").forEach(function (item) {
+        item.classList.remove("unread");
+      });
+      updateNotifBadge(0);
+    } catch (e) {
+      // Leave everything as-is -- the click can simply be retried.
+      showNotifError("Couldn't mark all notifications as read. Please try again.");
+    }
+  });
+
+  document.addEventListener("click", function (evt) {
+    if (el("notif-dropdown").hidden) return;
+    if (evt.target.closest("#notif-wrap")) return;
+    closeNotifDropdown();
+  });
+
+  document.addEventListener("keydown", function (evt) {
+    if (evt.key === "Escape") closeNotifDropdown();
+  });
+
   function renderDashboard(data) {
     el("whoami").textContent = data.user.username;
 
@@ -696,13 +1044,21 @@
     // the inline style (style.display = "") would fall back to that rule
     // and leave it invisible -- see the equivalent fix to show() above.
     el("logout-btn").style.display = "inline-block";
+    el("notif-wrap").style.display = "inline-flex";
     loadDashboard(token);
+    loadNotifications(token);
+    startNotifPolling(token);
   }
 
   function showLogin() {
     el("app").style.display = "none";
     el("login-panel").style.display = "";
     el("logout-btn").style.display = "none";
+    el("notif-wrap").style.display = "none";
+    closeNotifDropdown();
+    updateNotifBadge(0);
+    hideNotifError();
+    stopNotifPolling();
   }
 
   el("login-btn").addEventListener("click", async function () {

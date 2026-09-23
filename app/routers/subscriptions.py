@@ -24,6 +24,7 @@ from app.schemas import (
 from app.services import billing as billing_service
 from app.services import invoices as invoice_pdf_service
 from app.services import subscription as subscription_service
+from app.services.notifications import create_notification
 
 router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
 
@@ -49,6 +50,13 @@ def _change_subscription(
             .order_by(models.BillingHistory.created_at.desc())
             .first()
         )
+        create_notification(
+            db,
+            user_id=current_user.id,
+            message="Your subscription has been renewed successfully.",
+            notification_type="subscription_renewed",
+        )
+        db.commit()
         return existing, latest_invoice
 
     if existing is not None:
@@ -68,6 +76,14 @@ def _change_subscription(
     current_user.subscription_plan_id = plan.id
     db.commit()
     db.refresh(new_subscription)
+
+    create_notification(
+        db,
+        user_id=current_user.id,
+        message="Your subscription has been activated successfully.",
+        notification_type="subscription_activated",
+    )
+    db.commit()
 
     return new_subscription, billing_service.create_invoice(db, new_subscription)
 

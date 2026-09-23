@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -39,6 +39,9 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True
     )
     subscription_plan: Mapped["SubscriptionPlan"] = relationship(back_populates="users")
+    notifications: Mapped[list["Notification"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
 
 
 class Post(Base):
@@ -199,3 +202,31 @@ class BillingHistory(Base):
 
     user: Mapped["User"] = relationship(back_populates="billing_history")
     plan: Mapped["SubscriptionPlan"] = relationship(back_populates="billing_history")
+
+
+class Notification(Base):
+    """
+    An in-app notification for a user (e.g. "someone liked your post"),
+    separate from the email notifications sent by app/services/notifications.py
+    -- this is the persisted, readable/unread record; sending an email does
+    not create one of these and vice versa.
+    """
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        # Every notification list/unread-count query filters by recipient
+        # and either orders by recency or filters by read state, so both
+        # are covered by a single composite index rather than two.
+        Index("ix_notifications_user_id_created_at", "user_id", "created_at"),
+        Index("ix_notifications_user_id_is_read", "user_id", "is_read"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    notification_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    # like / comment / subscription_activated / subscription_renewed
+    is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped["User"] = relationship(back_populates="notifications")

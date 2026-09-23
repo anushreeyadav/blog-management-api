@@ -440,3 +440,34 @@ class SubscriptionChangeResponse(BaseModel):
     message: str
     subscription: SubscriptionChangeDetails
     billing: SubscriptionChangeBilling
+
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+
+class NotificationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    message: str
+    notification_type: str
+    is_read: bool
+    created_at: datetime
+
+
+class NotificationListResponse(BaseModel):
+    """GET /notifications/ -- the caller's own notifications, newest first,
+    plus unread_count so a client can show a badge without a second
+    request or counting the page itself (unread_count is a total over all
+    of the user's notifications, not just the ones returned here)."""
+
+    notifications: list[NotificationResponse]
+    unread_count: int
+
+
+class NotificationMarkAllReadResponse(BaseModel):
+    """PATCH /notifications/read-all."""
+
+    message: str
+    updated_count: int

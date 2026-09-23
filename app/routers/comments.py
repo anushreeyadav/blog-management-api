@@ -7,7 +7,7 @@ from app.database import get_db
 from app.routers.common import get_post_or_404
 from app.schemas import CommentCreate, CommentResponse
 from app.services import subscription as subscription_service
-from app.services.notifications import send_comment_notification
+from app.services.notifications import create_notification, send_comment_notification
 
 router = APIRouter(prefix="/posts", tags=["comments"])
 
@@ -58,6 +58,13 @@ def create_comment(
             post_title=post.title,
             actor_username=current_user.username,
         )
+        create_notification(
+            db,
+            user_id=post.author_id,
+            message=f"{current_user.username} commented on your post '{post.title}'.",
+            notification_type="comment",
+        )
+        db.commit()
 
     return comment
 

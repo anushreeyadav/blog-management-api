@@ -5,6 +5,9 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 
 from dotenv import load_dotenv
+from sqlalchemy.orm import Session
+
+from app import models
 
 load_dotenv()
 
@@ -89,3 +92,17 @@ def send_like_notification(post_owner_email: str, post_title: str, actor_usernam
     subject = "Someone liked your blog post"
     body = _activity_notification_body(post_title, actor_username, "Liked your post")
     send_email(post_owner_email, subject, body)
+
+
+def create_notification(db: Session, *, user_id: int, message: str, notification_type: str) -> models.Notification:
+    """
+    Persists an in-app Notification row (app/models.py) for `user_id`.
+
+    Separate from send_email above -- this is the readable/unread record a
+    client can list later, not an email delivery. Added to the session but
+    not committed here, so the caller decides when it becomes part of the
+    surrounding transaction.
+    """
+    notification = models.Notification(user_id=user_id, message=message, notification_type=notification_type)
+    db.add(notification)
+    return notification

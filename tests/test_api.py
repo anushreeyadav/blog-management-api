@@ -1876,6 +1876,53 @@ class TestCommentAndLikeNotifications:
         assert resp.status_code == 401
         mock_notify.assert_not_called()
 
+    # --- In-app Notification records for comments ------------------------
+
+    def test_comment_by_other_user_creates_notification_for_post_owner(self, security_client):
+        client, session_factory = security_client
+        self._register(client, self.USER_A)
+        headers_a = self._auth_headers(client, self.USER_A)
+        self._register(client, self.USER_B)
+        headers_b = self._auth_headers(client, self.USER_B)
+        post = self._create_post(client, headers_a, title="FastAPI Tutorial")
+
+        resp = client.post(f"/posts/{post['id']}/comments", json={"text": "Great post!"}, headers=headers_b)
+        assert resp.status_code == 201
+
+        owner = client.get("/auth/me", headers=headers_a).json()
+        notifications = self._notifications_for(session_factory, owner["id"])
+        assert len(notifications) == 1
+        notification = notifications[0]
+        assert notification.notification_type == "comment"
+        assert notification.is_read is False
+        assert notification.message == "user_b commented on your post 'FastAPI Tutorial'."
+
+    def test_own_comment_on_own_post_creates_no_notification(self, security_client):
+        client, session_factory = security_client
+        self._register(client, self.USER_A)
+        headers_a = self._auth_headers(client, self.USER_A)
+        post = self._create_post(client, headers_a)
+
+        resp = client.post(f"/posts/{post['id']}/comments", json={"text": "My own comment"}, headers=headers_a)
+        assert resp.status_code == 201
+
+        owner = client.get("/auth/me", headers=headers_a).json()
+        assert self._notifications_for(session_factory, owner["id"]) == []
+
+    def test_invalid_comment_creates_no_notification(self, security_client):
+        client, session_factory = security_client
+        self._register(client, self.USER_A)
+        headers_a = self._auth_headers(client, self.USER_A)
+        self._register(client, self.USER_B)
+        headers_b = self._auth_headers(client, self.USER_B)
+        post = self._create_post(client, headers_a)
+
+        resp = client.post(f"/posts/{post['id']}/comments", json={"text": ""}, headers=headers_b)
+        assert resp.status_code == 422
+
+        owner = client.get("/auth/me", headers=headers_a).json()
+        assert self._notifications_for(session_factory, owner["id"]) == []
+
     # --- Like notifications --------------------------------------------
 
     def test_like_by_other_user_triggers_notification_to_post_owner(self, security_client):
@@ -1951,6 +1998,68 @@ class TestCommentAndLikeNotifications:
             resp = client.post(f"/posts/{post['id']}/like")
         assert resp.status_code == 401
         mock_notify.assert_not_called()
+
+    # --- In-app Notification records for likes --------------------------
+
+    def _notifications_for(self, session_factory, user_id: int) -> list["models.Notification"]:
+        db = session_factory()
+        try:
+            return (
+                db.query(models.Notification)
+                .filter(models.Notification.user_id == user_id)
+                .all()
+            )
+        finally:
+            db.close()
+
+    def test_like_by_other_user_creates_notification_for_post_owner(self, security_client):
+        client, session_factory = security_client
+        self._register(client, self.USER_A)
+        headers_a = self._auth_headers(client, self.USER_A)
+        self._register(client, self.USER_B)
+        headers_b = self._auth_headers(client, self.USER_B)
+        post = self._create_post(client, headers_a, title="My First Blog Post")
+
+        resp = client.post(f"/posts/{post['id']}/like", headers=headers_b)
+        assert resp.status_code == 201
+
+        owner = client.get("/auth/me", headers=headers_a).json()
+        notifications = self._notifications_for(session_factory, owner["id"])
+        assert len(notifications) == 1
+        notification = notifications[0]
+        assert notification.notification_type == "like"
+        assert notification.is_read is False
+        assert notification.message == "user_b liked your post 'My First Blog Post'."
+
+    def test_self_like_creates_no_notification(self, security_client):
+        client, session_factory = security_client
+        self._register(client, self.USER_A)
+        headers_a = self._auth_headers(client, self.USER_A)
+        post = self._create_post(client, headers_a)
+
+        resp = client.post(f"/posts/{post['id']}/like", headers=headers_a)
+        assert resp.status_code == 201
+
+        owner = client.get("/auth/me", headers=headers_a).json()
+        assert self._notifications_for(session_factory, owner["id"]) == []
+
+    def test_duplicate_like_creates_no_second_notification(self, security_client):
+        client, session_factory = security_client
+        self._register(client, self.USER_A)
+        headers_a = self._auth_headers(client, self.USER_A)
+        self._register(client, self.USER_B)
+        headers_b = self._auth_headers(client, self.USER_B)
+        post = self._create_post(client, headers_a)
+
+        first = client.post(f"/posts/{post['id']}/like", headers=headers_b)
+        assert first.status_code == 201
+
+        second = client.post(f"/posts/{post['id']}/like", headers=headers_b)
+        assert second.status_code == 409
+
+        owner = client.get("/auth/me", headers=headers_a).json()
+        notifications = self._notifications_for(session_factory, owner["id"])
+        assert len(notifications) == 1
 
 
 class TestNotificationServiceInternals:

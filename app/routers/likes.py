@@ -8,7 +8,7 @@ from app.database import get_db
 from app.routers.common import get_post_or_404
 from app.schemas import LikeResponse
 from app.services import subscription as subscription_service
-from app.services.notifications import send_like_notification
+from app.services.notifications import create_notification, send_like_notification
 
 router = APIRouter(prefix="/posts", tags=["likes"])
 
@@ -74,6 +74,13 @@ def like_post(
             post_title=post.title,
             actor_username=current_user.username,
         )
+        create_notification(
+            db,
+            user_id=post.author_id,
+            message=f"{current_user.username} liked your post '{post.title}'.",
+            notification_type="like",
+        )
+        db.commit()
 
     return like
 

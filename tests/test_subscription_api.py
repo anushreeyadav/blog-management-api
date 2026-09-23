@@ -10,6 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app import models
 from app.database import Base, get_db
 from app.main import app as main_app
 from app.services import invoices as invoices_module
@@ -246,3 +247,124 @@ class TestExistingAuthAndBlogApisUndisturbed:
         assert create.status_code == 201
         get_resp = client.get(f"/posts/{create.json()['id']}")
         assert get_resp.status_code == 200
+
+
+@pytest.fixture()
+def client_with_db():
+    """Same isolated setup as the `client` fixture above, but also exposes
+    the session factory so tests can query the Notification table directly
+    -- the plain `client` fixture is left untouched since many existing
+    tests in this file destructure it as a single TestClient value."""
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine)
+    TestingSessionLocal = sessionmaker(bind=engine)
+
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    main_app.dependency_overrides[get_db] = override_get_db
+    with TestClient(main_app) as test_client:
+        yield test_client, TestingSessionLocal
+    main_app.dependency_overrides.clear()
+    engine.dispose()
+
+
+def _notifications_for(session_factory, user_id: int) -> list[models.Notification]:
+    db = session_factory()
+    try:
+        return (
+            db.query(models.Notification)
+            .filter(models.Notification.user_id == user_id)
+            .order_by(models.Notification.id)
+            .all()
+        )
+    finally:
+        db.close()
+
+
+class TestSubscriptionNotifications:
+    """In-app Notification records for subscription activation and
+    renewal, alongside (not replacing) the existing subscribe/change API
+    responses and BillingHistory/invoice behavior tested above."""
+
+    def test_activation_creates_notification(self, client_with_db):
+        client, session_factory = client_with_db
+        headers = _register_and_login(client)
+        me = client.get("/auth/me", headers=headers).json()
+        premium_id = _plan_id(client, "premium")
+
+        resp = client.post("/subscriptions/subscribe", json={"plan_id": premium_id}, headers=headers)
+        assert resp.status_code == 201
+
+        notifications = _notifications_for(session_factory, me["id"])
+        assert len(notifications) == 1
+        assert notifications[0].notification_type == "subscription_activated"
+        assert notifications[0].message == "Your subscription has been activated successfully."
+        assert notifications[0].is_read is False
+
+    def test_renewal_creates_notification_not_activation(self, client_with_db):
+        client, session_factory = client_with_db
+        headers = _register_and_login(client)
+        me = client.get("/auth/me", headers=headers).json()
+        premium_id = _plan_id(client, "premium")
+
+        first = client.post("/subscriptions/subscribe", json={"plan_id": premium_id}, headers=headers)
+        assert first.status_code == 201
+
+        # Re-subscribing to the same already-active plan is this app's
+        # renewal path (see app/routers/subscriptions.py's
+        # _change_subscription) -- there is no separate scheduled
+        # auto-renew job.
+        second = client.post("/subscriptions/subscribe", json={"plan_id": premium_id}, headers=headers)
+        assert second.status_code == 201
+
+        notifications = _notifications_for(session_factory, me["id"])
+        assert len(notifications) == 2
+        assert notifications[0].notification_type == "subscription_activated"
+        assert notifications[1].notification_type == "subscription_renewed"
+        assert notifications[1].message == "Your subscription has been renewed successfully."
+        assert notifications[1].is_read is False
+
+    def test_switching_to_a_different_plan_is_activation_not_renewal(self, client_with_db):
+        client, session_factory = client_with_db
+        headers = _register_and_login(client)
+        me = client.get("/auth/me", headers=headers).json()
+        basic_id = _plan_id(client, "basic")
+        pro_id = _plan_id(client, "pro")
+
+        client.post("/subscriptions/subscribe", json={"plan_id": basic_id}, headers=headers)
+        resp = client.post("/subscriptions/change", json={"plan_id": pro_id}, headers=headers)
+        assert resp.status_code == 200
+
+        notifications = _notifications_for(session_factory, me["id"])
+        assert [n.notification_type for n in notifications] == [
+            "subscription_activated",
+            "subscription_activated",
+        ]
+
+    def test_failed_subscribe_creates_no_notification(self, client_with_db):
+        client, session_factory = client_with_db
+        headers = _register_and_login(client)
+        me = client.get("/auth/me", headers=headers).json()
+
+        resp = client.post("/subscriptions/subscribe", json={"plan_id": 999999}, headers=headers)
+        assert resp.status_code == 404
+        assert _notifications_for(session_factory, me["id"]) == []
+
+    def test_unauthenticated_subscribe_creates_no_notification(self, client_with_db):
+        client, session_factory = client_with_db
+        headers = _register_and_login(client)  # seeds the plans in this fresh database
+        me = client.get("/auth/me", headers=headers).json()
+        premium_id = _plan_id(client, "premium")
+
+        resp = client.post("/subscriptions/subscribe", json={"plan_id": premium_id})
+        assert resp.status_code == 401
+        assert _notifications_for(session_factory, me["id"]) == []
