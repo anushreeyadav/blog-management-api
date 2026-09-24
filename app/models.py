@@ -42,6 +42,9 @@ class User(Base):
     notifications: Mapped[list["Notification"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True
     )
+    support_chat_messages: Mapped[list["SupportChatMessage"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
 
 
 class Post(Base):
@@ -230,3 +233,34 @@ class Notification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="notifications")
+
+
+class SupportChatMessage(Base):
+    """
+    One AI Support Chat exchange: the user's question and the reply they
+    were shown (see app/services/support_chat.py). response_source records
+    where that reply came from -- "claude" when the Anthropic API answered,
+    "predefined" when the built-in FAQ fallback did (AI disabled, API key
+    missing, or the API call failed) -- so the stored history always
+    reflects exactly what the user saw.
+
+    Only the exchange itself is stored -- never tokens, passwords or any other
+    authentication data. Deleting a user deletes their chat history (the
+    ondelete="CASCADE" foreign key, mirrored by User.support_chat_messages'
+    cascade, the same way every other per-user table here works).
+    """
+
+    __tablename__ = "support_chat_messages"
+    __table_args__ = (
+        # Every history query filters by the caller and orders by recency.
+        Index("ix_support_chat_messages_user_id_created_at", "user_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    response: Mapped[str] = mapped_column(Text, nullable=False)
+    response_source: Mapped[str] = mapped_column(String(20), nullable=False)  # claude / predefined
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped["User"] = relationship(back_populates="support_chat_messages")

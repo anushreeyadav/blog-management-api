@@ -471,3 +471,82 @@ class NotificationMarkAllReadResponse(BaseModel):
 
     message: str
     updated_count: int
+
+
+# ---------------------------------------------------------------------------
+# AI Support Chat
+# ---------------------------------------------------------------------------
+
+SUPPORT_CHAT_QUESTION_MAX_LENGTH = 2000
+
+
+class SupportChatAskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=SUPPORT_CHAT_QUESTION_MAX_LENGTH)
+
+    @field_validator("question")
+    @classmethod
+    def question_not_blank(cls, v: str) -> str:
+        return _require_non_blank(v, "question")
+
+
+class SupportChatMessageResponse(BaseModel):
+    """One stored exchange. response_source is "claude" or "predefined"
+    (the FAQ fallback used when the AI is unavailable)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    question: str
+    response: str
+    response_source: str
+    created_at: datetime
+
+
+class SupportChatHistoryResponse(BaseModel):
+    """GET /support-chat/history -- the caller's own exchanges, oldest
+    first so a chat window can render them top to bottom as-is."""
+
+    messages: list[SupportChatMessageResponse]
+
+
+class AiSupportRequest(BaseModel):
+    """POST /api/ai-support/ -- same limits as SupportChatAskRequest."""
+
+    message: str = Field(
+        min_length=1,
+        max_length=SUPPORT_CHAT_QUESTION_MAX_LENGTH,
+        examples=["How do I create a post?"],
+    )
+
+    @field_validator("message")
+    @classmethod
+    def message_not_blank(cls, v: str) -> str:
+        return _require_non_blank(v, "message")
+
+
+class AiSupportResponse(BaseModel):
+    """response is the answer shown to the user; timestamp is when the
+    exchange was saved (the stored SupportChatMessage.created_at)."""
+
+    response: str
+    timestamp: datetime
+
+
+class AiSupportHistoryItem(BaseModel):
+    """One saved exchange. ai_response is SupportChatMessage.response."""
+
+    id: int
+    question: str
+    ai_response: str
+    created_at: datetime
+
+
+class AiSupportHistoryResponse(BaseModel):
+    """GET /api/ai-support/history/ -- the caller's own exchanges, newest
+    first, paginated the same way as GET /posts (page/limit/total/total_pages)."""
+
+    messages: list[AiSupportHistoryItem]
+    page: int
+    limit: int
+    total: int
+    total_pages: int

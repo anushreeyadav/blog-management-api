@@ -3,6 +3,7 @@ import pytest
 from app.services import invoices as invoices_module
 from app.services import media as media_module
 from app.services import notifications as notifications_module
+from app.services import support_chat as support_chat_module
 
 
 @pytest.fixture(autouse=True)
@@ -48,3 +49,15 @@ def _isolated_posts_media_dir(tmp_path, monkeypatch):
     posts_dir = tmp_path / "posts"
     posts_dir.mkdir(parents=True)
     monkeypatch.setattr(media_module, "POSTS_MEDIA_DIR", posts_dir)
+
+
+@pytest.fixture(autouse=True)
+def _disable_real_ai_chat(monkeypatch):
+    """
+    Same reasoning as _disable_real_email_sending above: automated tests must
+    never call the real Anthropic API, whatever AI_CHAT_ENABLED/ANTHROPIC_API_KEY
+    the local .env holds. Support chat tests that exercise the Claude path
+    re-enable it themselves and replace the API client with a fake.
+    """
+    monkeypatch.setattr(support_chat_module, "AI_CHAT_ENABLED", False)
+    monkeypatch.setattr(support_chat_module, "_client", None)

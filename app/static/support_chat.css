@@ -1,0 +1,259 @@
+/*
+ * AI Support Chat widget (see support_chat.js). Every selector is prefixed
+ * with .sc- so the widget never affects the host page's own styles.
+ *
+ * Colors come from the host page's design tokens when it defines them
+ * (dashboard.html's --series-1, --surface-card, --text-primary, ...), so the
+ * widget follows the dashboard's palette and dark mode automatically. The
+ * second value in each var() is the fallback for pages without those tokens.
+ */
+.sc-root {
+  --sc-accent:      var(--series-1, #2a78d6);
+  --sc-accent-text: #ffffff;
+  --sc-surface:     var(--surface-card, #ffffff);
+  --sc-surface-alt: #f3f3f0;
+  --sc-text:        var(--text-primary, #0b0b0b);
+  --sc-text-muted:  var(--text-secondary, #6b6a65);
+  --sc-border:      var(--border, rgba(11, 11, 11, 0.12));
+  --sc-danger:      var(--danger, #d03b3b);
+  --sc-shadow:      0 12px 32px rgba(0, 0, 0, 0.18);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+@media (prefers-color-scheme: dark) {
+  .sc-root {
+    --sc-accent:      var(--series-1, #3987e5);
+    --sc-surface:     var(--surface-card, #232322);
+    --sc-surface-alt: #2f2f2d;
+    --sc-text:        var(--text-primary, #ffffff);
+    --sc-text-muted:  var(--text-secondary, #a8a79f);
+    --sc-border:      var(--border, rgba(255, 255, 255, 0.12));
+    --sc-danger:      var(--danger, #e66767);
+    --sc-shadow:      0 12px 32px rgba(0, 0, 0, 0.5);
+  }
+}
+.sc-root *, .sc-root *::before, .sc-root *::after { box-sizing: border-box; }
+
+.sc-launcher {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1000;
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 50%;
+  background: var(--sc-accent);
+  color: var(--sc-accent-text);
+  box-shadow: var(--sc-shadow);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease;
+}
+.sc-launcher:hover { transform: scale(1.06); }
+.sc-launcher:focus-visible { outline: 3px solid var(--sc-accent); outline-offset: 3px; }
+.sc-launcher svg { width: 26px; height: 26px; }
+
+.sc-panel {
+  position: fixed;
+  right: 20px;
+  bottom: 88px;
+  z-index: 1001;
+  width: 370px;
+  height: min(560px, calc(100vh - 110px));
+  display: flex;
+  flex-direction: column;
+  background: var(--sc-surface);
+  color: var(--sc-text);
+  border: 1px solid var(--sc-border);
+  border-radius: 14px;
+  box-shadow: var(--sc-shadow);
+  overflow: hidden;
+}
+.sc-panel[hidden] { display: none; }
+
+.sc-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--sc-accent);
+  color: var(--sc-accent-text);
+}
+.sc-header-text { flex: 1; min-width: 0; }
+.sc-title { margin: 0; font-size: 15px; font-weight: 600; }
+.sc-subtitle { margin: 2px 0 0; font-size: 12px; opacity: 0.85; }
+.sc-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.sc-close:hover { background: rgba(255, 255, 255, 0.18); }
+
+.sc-messages {
+  flex: 1;
+  min-height: 0; /* lets the flex child shrink and scroll instead of pushing the input off-screen */
+  overflow-y: auto;
+  overscroll-behavior: contain; /* scrolling past the ends never scrolls the page behind */
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sc-msg { display: flex; flex-direction: column; max-width: 85%; }
+.sc-msg-user { align-self: flex-end; align-items: flex-end; }
+.sc-msg-bot { align-self: flex-start; align-items: flex-start; }
+.sc-bubble {
+  padding: 9px 12px;
+  border-radius: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.sc-msg-user .sc-bubble { background: var(--sc-accent); color: var(--sc-accent-text); border-bottom-right-radius: 4px; }
+.sc-msg-bot .sc-bubble { background: var(--sc-surface-alt); color: var(--sc-text); border-bottom-left-radius: 4px; }
+.sc-meta { margin-top: 3px; font-size: 11px; color: var(--sc-text-muted); }
+.sc-msg-failed .sc-meta { color: var(--sc-danger); }
+.sc-msg-failed .sc-bubble { opacity: 0.6; }
+
+.sc-notice {
+  align-self: center;
+  text-align: center;
+  font-size: 13px;
+  color: var(--sc-text-muted);
+  padding: 8px 12px;
+}
+.sc-notice.sc-error { color: var(--sc-danger); }
+.sc-notice.sc-loading::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  vertical-align: -2px;
+  border: 2px solid var(--sc-border);
+  border-top-color: var(--sc-accent);
+  border-radius: 50%;
+  animation: sc-spin 0.8s linear infinite;
+}
+@keyframes sc-spin { to { transform: rotate(360deg); } }
+
+.sc-earlier { align-self: center; }
+.sc-earlier-btn, .sc-link-btn {
+  border: none;
+  background: none;
+  padding: 4px 6px;
+  color: var(--sc-accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.sc-earlier-btn:disabled { color: var(--sc-text-muted); cursor: default; text-decoration: none; }
+
+.sc-typing { display: inline-flex; gap: 4px; padding: 12px 14px; }
+.sc-typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sc-text-muted);
+  animation: sc-bounce 1.2s infinite ease-in-out;
+}
+.sc-typing span:nth-child(2) { animation-delay: 0.15s; }
+.sc-typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes sc-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+.sc-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--sc-border);
+  background: var(--sc-surface);
+}
+.sc-input {
+  flex: 1;
+  min-height: 40px;
+  max-height: 120px;
+  resize: none;
+  padding: 9px 12px;
+  border: 1px solid var(--sc-border);
+  border-radius: 10px;
+  background: var(--sc-surface);
+  color: var(--sc-text);
+  font: inherit;
+}
+.sc-input:focus { outline: 2px solid var(--sc-accent); outline-offset: -1px; }
+.sc-send {
+  height: 40px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 10px;
+  background: var(--sc-accent);
+  color: var(--sc-accent-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sc-send:disabled, .sc-input:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/*
+ * Full-screen mode: phones in portrait (narrow) and in landscape (short).
+ * Keep this query in sync with FULLSCREEN_QUERY in support_chat.js.
+ *
+ * --sc-viewport-height/--sc-viewport-top are set by support_chat.js from
+ * window.visualViewport, so the panel shrinks to the space left above the
+ * on-screen keyboard and the input and Send button stay visible.
+ */
+@media (max-width: 600px), (max-height: 500px) {
+  .sc-launcher { right: 12px; bottom: 12px; width: 52px; height: 52px; } /* fits the page's 64px bottom padding */
+  .sc-panel {
+    top: var(--sc-viewport-top, 0);
+    right: 0;
+    bottom: auto;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    height: var(--sc-viewport-height, 100dvh);
+    border: none;
+    border-radius: 0;
+  }
+  .sc-root.sc-open .sc-launcher { display: none; }
+  .sc-header { padding: 8px 8px 8px 16px; }
+  .sc-close { width: 44px; height: 44px; } /* comfortable touch targets */
+  .sc-messages { padding: 12px; }
+  .sc-msg { max-width: 90%; }
+  .sc-form { padding: 8px; }
+  .sc-input { min-height: 44px; font-size: 16px; } /* 16px stops iOS zooming into the field */
+  .sc-send { height: 44px; }
+}
+
+/* Touch screens in corner-panel mode (e.g. tablets) get the same 44px touch targets. */
+@media (pointer: coarse) {
+  .sc-close { width: 44px; height: 44px; }
+  .sc-input { min-height: 44px; font-size: 16px; }
+  .sc-send { height: 44px; }
+}
+
+/* While the full-screen panel is open, the page behind it doesn't scroll. */
+html.sc-scroll-lock, html.sc-scroll-lock body { overflow: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-launcher { transition: none; }
+  .sc-typing span { animation: none; }
+  .sc-notice.sc-loading::before { animation: none; }
+}
