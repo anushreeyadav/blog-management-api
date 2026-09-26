@@ -22,6 +22,10 @@ class User(Base):
     subscription_plan_id: Mapped[int] = mapped_column(
         ForeignKey("subscription_plans.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    # Auth0's stable user id ("sub" claim, e.g. "auth0|abc123") for users who
+    # sign in through Auth0 (see app/auth0.py). NULL for username/password
+    # users -- the existing /auth/* flow never reads or writes it.
+    auth0_sub: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
 
     posts: Mapped[list["Post"]] = relationship(
         back_populates="author", cascade="all, delete-orphan", passive_deletes=True
@@ -264,3 +268,30 @@ class SupportChatMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="support_chat_messages")
+
+
+class UserAuth0Identity(Base):
+    """
+    One Auth0 login linked to a local user -- e.g. the same person's Google
+    ("google-oauth2|...") and Facebook ("facebook|...") identities both
+    pointing at one users row (see app/auth0.py's get_or_create_user). A
+    user can have any number of these; each Auth0 identity belongs to
+    exactly one user.
+
+    User.auth0_sub is kept as-is and still records the *first* identity
+    linked, so nothing that already reads it changes; this table is what
+    Auth0 logins are looked up by.
+
+    Deliberately no back-reference on User (tests pin User's relationship
+    set); a user's identities are fetched by query, and the database's
+    ON DELETE CASCADE removes them together with the user.
+    """
+
+    __tablename__ = "user_auth0_identities"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    auth0_sub: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped["User"] = relationship()

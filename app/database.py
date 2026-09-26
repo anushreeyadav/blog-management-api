@@ -91,3 +91,21 @@ def ensure_dashboard_indexes() -> None:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_posts_author_id ON posts (author_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_comments_post_id ON comments (post_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_comments_user_id ON comments (user_id)"))
+
+
+def ensure_user_auth0_sub_column() -> None:
+    """
+    Same situation as ensure_post_image_column above, for users.auth0_sub
+    (see app/models.py's User.auth0_sub and app/auth0.py). Existing users
+    get auth0_sub = NULL, i.e. they stay plain username/password users.
+    The unique index is created separately because SQLite can't add a
+    UNIQUE column via ALTER TABLE.
+    """
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+    columns = {col["name"] for col in inspector.get_columns("users")}
+    with engine.begin() as conn:
+        if "auth0_sub" not in columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN auth0_sub VARCHAR(255)"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_auth0_sub ON users (auth0_sub)"))

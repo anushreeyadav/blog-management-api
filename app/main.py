@@ -12,11 +12,14 @@ from app.database import (
     ensure_dashboard_indexes,
     ensure_post_image_column,
     ensure_post_view_count_column,
+    ensure_user_auth0_sub_column,
 )
 from app.routers import (
     admin,
     ai_support,
     auth,
+    auth0,
+    auth_email,
     comments,
     dashboard,
     likes,
@@ -37,6 +40,7 @@ async def lifespan(app: FastAPI):
     ensure_post_image_column()
     ensure_post_view_count_column()
     ensure_dashboard_indexes()
+    ensure_user_auth0_sub_column()
     db = SessionLocal()
     try:
         seed_default_plans(db)
@@ -48,6 +52,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Blog Management API", lifespan=lifespan)
 
 app.include_router(auth.router)
+app.include_router(auth_email.router)
 app.include_router(posts.router)
 app.include_router(comments.router)
 app.include_router(likes.router)
@@ -57,6 +62,8 @@ app.include_router(dashboard.router)
 app.include_router(notifications.router)
 app.include_router(support_chat.router)
 app.include_router(ai_support.router)
+app.include_router(auth0.router)
+app.include_router(auth0.callback_router)
 
 app.mount("/media", StaticFiles(directory=str(MEDIA_ROOT)), name="media")
 app.mount("/static", StaticFiles(directory=str(STATIC_ROOT)), name="static")
