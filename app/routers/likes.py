@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.auth import get_current_user
 from app.database import get_db
-from app.routers.common import get_post_or_404
+from app.routers.common import get_post_or_404, get_visible_post_or_404
 from app.schemas import LikeResponse
 from app.services import subscription as subscription_service
 from app.services.notifications import create_notification, send_like_notification
@@ -48,7 +48,8 @@ def like_post(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    post = get_post_or_404(db, post_id)
+    # Drafts / not-yet-due scheduled posts: 404 to anyone but their author.
+    post = get_visible_post_or_404(db, post_id, current_user)
 
     if _get_like(db, post_id, current_user.id) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Post already liked")

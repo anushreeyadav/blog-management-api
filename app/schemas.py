@@ -1,6 +1,20 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    ValidatorFunctionWrapHandler,
+    field_validator,
+)
+from pydantic.json_schema import SkipJsonSchema
+from pydantic_core import PydanticCustomError
+
+from app.models import POST_STATUS_DRAFT, POST_STATUS_PUBLISHED, POST_STATUS_SCHEDULED
 
 
 def _require_non_blank(value: str, field_label: str) -> str:
@@ -72,9 +86,124 @@ class UserResponse(BaseModel):
 # Posts
 # ---------------------------------------------------------------------------
 
+# How a create/update request wants the post published. The post's stored
+# status (app/models.py's Post.status) is derived from this -- clients never
+# send status or published_at directly; published_at is recorded by the
+# server when a post actually goes live.
+PUBLISH_NOW = "publish_now"
+SAVE_DRAFT = "save_draft"
+SCHEDULE = "schedule"
+PostPublishOption = Literal["publish_now", "save_draft", "schedule"]
+
+PUBLISH_OPTION_TO_STATUS = {
+    PUBLISH_NOW: POST_STATUS_PUBLISHED,
+    SAVE_DRAFT: POST_STATUS_DRAFT,
+    SCHEDULE: POST_STATUS_SCHEDULED,
+}
+
+
+# Validation messages for scheduled publishing. Raised as PydanticCustomError
+# so the 422 "msg" is exactly this text (no "Value error, " prefix) and each
+# case has its own stable "type" a client can branch on.
+SCHEDULED_AT_ERRORS = {
+    "scheduled_at_required": "scheduled_at is required when publish_option is 'schedule'. "
+    "Choose a future date and time, e.g. 2026-10-01T09:00:00Z.",
+    "scheduled_at_not_allowed": "scheduled_at can only be set when publish_option is 'schedule'. "
+    "Remove it, or set publish_option to 'schedule'.",
+    "scheduled_at_invalid_format": "scheduled_at must be a valid date and time, e.g. 2026-10-01T09:00:00Z.",
+    "scheduled_at_missing_timezone": "scheduled_at must include a date, a time and a timezone, "
+    "e.g. 2026-10-01T09:00:00Z or 2026-10-01T14:30:00+05:30.",
+    "scheduled_at_not_in_future": "scheduled_at must be in the future. Choose a later date and time.",
+    "status_read_only": "status can't be set directly. Use publish_option instead: "
+    "'publish_now', 'save_draft' or 'schedule'.",
+    "published_at_read_only": "published_at can't be set directly. "
+    "It's recorded automatically when the post goes live.",
+}
+
+
+def _publishing_error(error_type: str) -> PydanticCustomError:
+    return PydanticCustomError(error_type, SCHEDULED_AT_ERRORS[error_type])
+
+
+def _validate_scheduled_at(
+    value: Any, handler: ValidatorFunctionWrapHandler, info: ValidationInfo
+) -> datetime | None:
+    """
+    Shared by PostCreate and PostUpdate (a wrap validator, so malformed input
+    gets the friendly format message instead of the parser's). publish_option
+    is declared before scheduled_at on both, so it's already in info.data
+    here -- unless it was itself invalid, in which case that error is the one
+    reported.
+
+    All comparisons are timezone-aware, in UTC -- the convention every stored
+    timestamp here follows (timestamptz columns; created_at/published_at from
+    the database clock, scheduled_at normalized below).
+    """
+    try:
+        value = handler(value)
+    except ValidationError:
+        raise _publishing_error("scheduled_at_invalid_format")
+
+    if "publish_option" not in info.data:
+        return value
+    option = info.data["publish_option"]
+
+    if option != SCHEDULE:
+        if value is not None:
+            raise _publishing_error("scheduled_at_not_allowed")
+        return value
+
+    if value is None:
+        raise _publishing_error("scheduled_at_required")
+    if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+        # Also covers a bare date ("2026-10-01"), which parses as naive midnight.
+        raise _publishing_error("scheduled_at_missing_timezone")
+    if value <= datetime.now(timezone.utc):
+        raise _publishing_error("scheduled_at_not_in_future")
+    # Normalized to UTC: same instant, but SQLite drops the offset on
+    # storage, so a "+05:30" time would otherwise be read back as UTC.
+    return value.astimezone(timezone.utc)
+
+
+def _reject_server_managed_field(value: Any, info: ValidationInfo) -> None:
+    """status/published_at are server-controlled. Sending one used to be
+    silently ignored, which let a client believe it had set it; an explicit
+    null is still accepted as "not set"."""
+    if value is not None:
+        raise _publishing_error(f"{info.field_name}_read_only")
+    return None
+
+
 class PostCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     content: str = Field(min_length=1)
+    # Defaults to publish_now -- the only behavior POST /posts had before
+    # scheduled publishing existed, so existing clients are unaffected.
+    publish_option: PostPublishOption = PUBLISH_NOW
+    # Required (and only allowed) with publish_option="schedule"; must be
+    # timezone-aware and in the future. validate_default so a missing value
+    # is still checked against publish_option.
+    scheduled_at: datetime | None = Field(default=None, validate_default=True)
+    # Declared only to reject them with a clear message (see
+    # _reject_server_managed_field); hidden from the OpenAPI schema.
+    status: SkipJsonSchema[Any] = Field(default=None, exclude=True)
+    published_at: SkipJsonSchema[Any] = Field(default=None, exclude=True)
+
+    @property
+    def target_status(self) -> str:
+        return PUBLISH_OPTION_TO_STATUS[self.publish_option]
+
+    @field_validator("scheduled_at", mode="wrap")
+    @classmethod
+    def scheduled_at_matches_publish_option(
+        cls, v: Any, handler: ValidatorFunctionWrapHandler, info: ValidationInfo
+    ) -> datetime | None:
+        return _validate_scheduled_at(v, handler, info)
+
+    @field_validator("status", "published_at", mode="before")
+    @classmethod
+    def server_managed_fields_rejected(cls, v: Any, info: ValidationInfo) -> None:
+        return _reject_server_managed_field(v, info)
 
     @field_validator("title")
     @classmethod
@@ -90,6 +219,28 @@ class PostCreate(BaseModel):
 class PostUpdate(BaseModel):
     title: str | None = Field(default=None, max_length=255)
     content: str | None = None
+    # None (the default) leaves the post's current status untouched, so
+    # existing title/content-only edits behave exactly as before.
+    publish_option: PostPublishOption | None = None
+    scheduled_at: datetime | None = Field(default=None, validate_default=True)
+    status: SkipJsonSchema[Any] = Field(default=None, exclude=True)
+    published_at: SkipJsonSchema[Any] = Field(default=None, exclude=True)
+
+    @property
+    def target_status(self) -> str | None:
+        return PUBLISH_OPTION_TO_STATUS[self.publish_option] if self.publish_option else None
+
+    @field_validator("scheduled_at", mode="wrap")
+    @classmethod
+    def scheduled_at_matches_publish_option(
+        cls, v: Any, handler: ValidatorFunctionWrapHandler, info: ValidationInfo
+    ) -> datetime | None:
+        return _validate_scheduled_at(v, handler, info)
+
+    @field_validator("status", "published_at", mode="before")
+    @classmethod
+    def server_managed_fields_rejected(cls, v: Any, info: ValidationInfo) -> None:
+        return _reject_server_managed_field(v, info)
 
     @field_validator("title")
     @classmethod
@@ -116,6 +267,18 @@ class PostResponse(BaseModel):
     created_at: datetime
     image: str | None = None  # kept for existing consumers: the most recently uploaded image
     images: list[str] = []  # the full gallery, in upload order -- may hold more than one for Premium/Pro
+    status: str = POST_STATUS_PUBLISHED  # draft / scheduled / published
+    scheduled_at: datetime | None = None  # when a scheduled post goes live
+    published_at: datetime | None = None  # when the post actually went live; None until then
+
+    @field_validator("scheduled_at", "published_at")
+    @classmethod
+    def _publishing_times_are_utc_aware(cls, v: datetime | None) -> datetime | None:
+        # Stored as UTC. PostgreSQL already returns aware values; SQLite
+        # returns naive ones, which clients would otherwise read as local time.
+        if v is not None and v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
 
     @field_validator("images", mode="before")
     @classmethod

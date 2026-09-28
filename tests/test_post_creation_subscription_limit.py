@@ -132,7 +132,12 @@ class TestExistingBehaviorUnchanged:
         resp = _create_post(client, headers, "Shape check")
 
         body = resp.json()
-        assert set(body.keys()) == {"id", "title", "content", "author_id", "created_at", "image", "images"}
+        # status/scheduled_at/published_at were appended for scheduled
+        # publishing (app/schemas.py's PostResponse); nothing else changed.
+        assert set(body.keys()) == {
+            "id", "title", "content", "author_id", "created_at", "image", "images",
+            "status", "scheduled_at", "published_at",
+        }
         assert body["image"] is None
         assert body["images"] == []
 

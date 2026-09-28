@@ -1,6 +1,19 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    event,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -51,8 +64,29 @@ class User(Base):
     )
 
 
+POST_STATUS_DRAFT = "draft"
+POST_STATUS_SCHEDULED = "scheduled"
+POST_STATUS_PUBLISHED = "published"
+POST_STATUSES = (POST_STATUS_DRAFT, POST_STATUS_SCHEDULED, POST_STATUS_PUBLISHED)
+
+
 class Post(Base):
     __tablename__ = "posts"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'scheduled', 'published')",
+            name="ck_posts_status_valid",
+        ),
+        # A scheduled post must say when it goes live; drafts and published
+        # posts may leave scheduled_at NULL.
+        CheckConstraint(
+            "status <> 'scheduled' OR scheduled_at IS NOT NULL",
+            name="ck_posts_scheduled_requires_scheduled_at",
+        ),
+        # Covers finding scheduled posts that are due ("status = 'scheduled'
+        # AND scheduled_at <= now") as well as filtering the feed by status.
+        Index("ix_posts_status_scheduled_at", "status", "scheduled_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -76,6 +110,24 @@ class Post(Base):
     # is no reliable "is this the owner" check available on an anonymous
     # request without adding auth to a route that's deliberately public.
     view_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # Publishing state: draft / scheduled / published (POST_STATUSES above).
+    # Defaults to "published" -- every post that existed before this column
+    # was added was already public, and any caller that creates a post
+    # without choosing a status keeps getting the old "publish immediately"
+    # behavior.
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=POST_STATUS_PUBLISHED, server_default=POST_STATUS_PUBLISHED
+    )
+    # When a scheduled post should go live. NULL unless status is "scheduled".
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When the post actually became public. Set to now() for posts inserted
+    # as published (see _set_published_at_on_insert below); NULL for
+    # drafts/scheduled posts until they publish. Posts that predate this
+    # column were backfilled with created_at by the migration (and
+    # app/database.py's ensure_post_publishing_columns). Deliberately not a
+    # column default: SQLAlchemy applies a default even when a draft sets
+    # published_at=None explicitly.
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     author: Mapped["User"] = relationship(back_populates="posts")
     comments: Mapped[list["Comment"]] = relationship(
@@ -87,6 +139,14 @@ class Post(Base):
     images: Mapped[list["PostImage"]] = relationship(
         back_populates="post", cascade="all, delete-orphan", passive_deletes=True, order_by="PostImage.id"
     )
+
+
+@event.listens_for(Post, "before_insert")
+def _set_published_at_on_insert(mapper, connection, target: Post) -> None:
+    # status may still be unset here (its default is applied during the
+    # INSERT itself), which also means "published".
+    if target.status in (None, POST_STATUS_PUBLISHED) and target.published_at is None:
+        target.published_at = func.now()
 
 
 class PostImage(Base):

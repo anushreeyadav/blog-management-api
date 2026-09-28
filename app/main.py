@@ -11,6 +11,7 @@ from app.database import (
     engine,
     ensure_dashboard_indexes,
     ensure_post_image_column,
+    ensure_post_publishing_columns,
     ensure_post_view_count_column,
     ensure_user_auth0_sub_column,
 )
@@ -29,6 +30,7 @@ from app.routers import (
     support_chat,
 )
 from app.services.media import MEDIA_ROOT
+from app.services import scheduled_publishing
 from app.services.plans import seed_default_plans
 
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
@@ -41,12 +43,15 @@ async def lifespan(app: FastAPI):
     ensure_post_view_count_column()
     ensure_dashboard_indexes()
     ensure_user_auth0_sub_column()
+    ensure_post_publishing_columns()
     db = SessionLocal()
     try:
         seed_default_plans(db)
     finally:
         db.close()
+    scheduled_publishing.start()
     yield
+    await scheduled_publishing.stop()
 
 
 app = FastAPI(title="Blog Management API", lifespan=lifespan)

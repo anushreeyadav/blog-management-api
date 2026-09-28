@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app import models
-from app.auth import get_current_user
+from app.auth import get_current_user, get_optional_current_user
 from app.database import get_db
-from app.routers.common import get_post_or_404
+from app.routers.common import get_visible_post_or_404
 from app.schemas import CommentCreate, CommentResponse
 from app.services import subscription as subscription_service
 from app.services.notifications import create_notification, send_comment_notification
@@ -39,7 +39,8 @@ def create_comment(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    post = get_post_or_404(db, post_id)
+    # Drafts / not-yet-due scheduled posts: 404 to anyone but their author.
+    post = get_visible_post_or_404(db, post_id, current_user)
     subscription_service.enforce_action_limit(db, current_user, subscription_service.ACTION_COMMENT_ON_POST)
 
     comment = models.Comment(
@@ -70,8 +71,12 @@ def create_comment(
 
 
 @router.get("/{post_id}/comments", response_model=list[CommentResponse])
-def list_comments(post_id: int, db: Session = Depends(get_db)):
-    get_post_or_404(db, post_id)
+def list_comments(
+    post_id: int,
+    db: Session = Depends(get_db),
+    viewer: models.User | None = Depends(get_optional_current_user),
+):
+    get_visible_post_or_404(db, post_id, viewer)
     return (
         db.query(models.Comment)
         .filter(models.Comment.post_id == post_id)

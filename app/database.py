@@ -109,3 +109,31 @@ def ensure_user_auth0_sub_column() -> None:
         if "auth0_sub" not in columns:
             conn.execute(text("ALTER TABLE users ADD COLUMN auth0_sub VARCHAR(255)"))
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_auth0_sub ON users (auth0_sub)"))
+
+
+def ensure_post_publishing_columns() -> None:
+    """
+    Same situation as ensure_post_image_column above, for the scheduled
+    publishing columns (see app/models.py's Post.status / scheduled_at /
+    published_at). Existing posts were already public, so they get
+    status = 'published' and published_at = created_at. The CHECK
+    constraints are left to the Alembic migration (SQLite can't add them
+    to an existing table); the index is safe to create on every startup.
+    """
+    inspector = inspect(engine)
+    if "posts" not in inspector.get_table_names():
+        return
+    columns = {col["name"] for col in inspector.get_columns("posts")}
+    with engine.begin() as conn:
+        if "status" not in columns:
+            conn.execute(text("ALTER TABLE posts ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'published'"))
+        if "scheduled_at" not in columns:
+            conn.execute(text("ALTER TABLE posts ADD COLUMN scheduled_at TIMESTAMP WITH TIME ZONE"))
+        if "published_at" not in columns:
+            conn.execute(text("ALTER TABLE posts ADD COLUMN published_at TIMESTAMP WITH TIME ZONE"))
+            conn.execute(
+                text("UPDATE posts SET published_at = created_at WHERE status = 'published' AND published_at IS NULL")
+            )
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_posts_status_scheduled_at ON posts (status, scheduled_at)")
+        )

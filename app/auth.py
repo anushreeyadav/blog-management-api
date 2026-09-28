@@ -103,6 +103,24 @@ def get_current_user(
     return user
 
 
+def get_optional_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> models.User | None:
+    """
+    For public endpoints that show more to a signed-in caller (e.g. an author
+    viewing their own draft via GET /posts/{id}). No token -> None. An
+    invalid or expired token is also treated as anonymous rather than a 401,
+    so a stale token in the browser never breaks public reading.
+    """
+    if credentials is None:
+        return None
+    try:
+        return get_current_user(credentials, db)
+    except HTTPException:
+        return None
+
+
 def get_current_admin_user(current_user: models.User = Depends(get_current_user)) -> models.User:
     if not current_user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")

@@ -3,6 +3,7 @@ import pytest
 from app.services import invoices as invoices_module
 from app.services import media as media_module
 from app.services import notifications as notifications_module
+from app.services import scheduled_publishing as scheduled_publishing_module
 from app.services import support_chat as support_chat_module
 
 
@@ -61,3 +62,15 @@ def _disable_real_ai_chat(monkeypatch):
     """
     monkeypatch.setattr(support_chat_module, "AI_CHAT_ENABLED", False)
     monkeypatch.setattr(support_chat_module, "_client", None)
+
+
+@pytest.fixture(autouse=True)
+def _disable_scheduled_publishing_loop(monkeypatch):
+    """
+    Same reasoning as _disable_real_email_sending above: every TestClient
+    that enters the app lifespan would otherwise start the background
+    scheduled-publishing loop (app/services/scheduled_publishing.py), whose
+    passes use the real SessionLocal -- i.e. the database in .env, not the
+    test's in-memory one. Tests of the job call run_once() themselves.
+    """
+    monkeypatch.setattr(scheduled_publishing_module, "SCHEDULED_PUBLISHING_ENABLED", False)

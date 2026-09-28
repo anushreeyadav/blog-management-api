@@ -415,6 +415,41 @@
   .side-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin: 0 0 12px; }
   .tips { margin: 18px 0 0; padding: 0 0 0 18px; color: var(--text-secondary); font-size: 13.5px; line-height: 1.7; }
   .editor-actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  .publish-options { border: none; border-top: 1px solid var(--gridline); margin: 16px 0 0; padding: 16px 0 0; min-width: 0; }
+  .publish-options legend { padding: 0; float: left; width: 100%; }
+  .publish-choices { clear: both; display: flex; flex-wrap: wrap; gap: 8px; }
+  .publish-choice { flex: 1 1 150px; position: relative; }
+  .publish-choice input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+  .publish-choice span {
+    display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 14px; border-radius: 12px; cursor: pointer;
+    border: 1.5px solid var(--border); background: var(--surface-card); color: var(--text-secondary); font-size: 14px; font-weight: 700;
+    transition: border-color .15s, background .15s, color .15s, box-shadow .15s; white-space: nowrap;
+  }
+  .publish-choice span svg { width: 16px; height: 16px; flex: none; }
+  .publish-choice span:hover { border-color: rgba(124, 58, 237, 0.4); color: var(--brand-1); }
+  .publish-choice input:checked + span { border-color: var(--brand-1); background: rgba(124, 58, 237, 0.08); color: var(--brand-1); }
+  .publish-choice input:focus-visible + span { box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.18); }
+  .publish-choice input:disabled + span { opacity: 0.45; cursor: not-allowed; border-color: var(--border); color: var(--text-muted); background: var(--surface-card); }
+  .publish-hint { margin: 10px 0 0; font-size: 13px; color: var(--text-muted); }
+  .schedule-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; margin-top: 4px; }
+  .schedule-fields label { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 12px 0 6px; }
+  .schedule-fields input {
+    width: 100%; padding: 11px 12px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface-1);
+    color: var(--text-primary); font-size: 15px; transition: border-color .15s, box-shadow .15s;
+  }
+  .schedule-fields input:focus { outline: none; border-color: var(--brand-1); box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.14); }
+  .schedule-fields input[aria-invalid="true"] { border-color: var(--danger); }
+  .schedule-tz { grid-column: 1 / -1; margin: 8px 0 0; font-size: 12.5px; color: var(--text-muted); }
+  .schedule-error { grid-column: 1 / -1; margin: 6px 0 0; font-size: 13.5px; font-weight: 600; color: var(--danger); }
+  .schedule-error:empty { display: none; }
+  @media (max-width: 480px) { .schedule-fields { grid-template-columns: 1fr; } .publish-choice { flex-basis: 100%; } }
+  .status-tag { display: inline-block; margin-right: 6px; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 800; vertical-align: 1px; }
+  .status-tag.draft { background: rgba(142, 135, 163, 0.18); color: var(--text-secondary); }
+  .status-tag.scheduled { background: rgba(249, 115, 22, 0.14); color: #c2410c; }
+  .status-tag.published { background: rgba(5, 150, 105, 0.12); color: var(--success); }
+  @media (prefers-color-scheme: dark) { .status-tag.scheduled { color: #fdba74; } }
+  .mine-item p.mine-status { margin: 0 0 4px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
+  .mine-item p.mine-status .status-tag { margin-right: 8px; }
 
   /* My posts list */
   .mine-list { display: grid; gap: 14px; }
@@ -641,6 +676,27 @@
           <input class="title-input" id="write-title" type="text" maxlength="255" placeholder="Your story title" aria-label="Title" />
           <textarea id="write-content" placeholder="Tell your story..." aria-label="Content"></textarea>
           <div class="counter" id="write-counter">0 words</div>
+          <fieldset class="publish-options" id="publish-options">
+            <legend class="side-title">Publishing options</legend>
+            <div class="publish-choices" role="radiogroup" aria-label="Publishing options">
+              <label class="publish-choice"><input type="radio" name="publish-option" value="publish_now" checked /><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>Publish Now</span></label>
+              <label class="publish-choice"><input type="radio" name="publish-option" value="save_draft" /><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Save as Draft</span></label>
+              <label class="publish-choice"><input type="radio" name="publish-option" value="schedule" /><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Schedule Post</span></label>
+            </div>
+            <p class="publish-hint" id="publish-hint">Your story goes live as soon as you publish it.</p>
+            <div class="schedule-fields" id="schedule-fields" hidden>
+              <div>
+                <label for="schedule-date">Date</label>
+                <input id="schedule-date" type="date" required aria-describedby="schedule-error schedule-tz" />
+              </div>
+              <div>
+                <label for="schedule-time">Time</label>
+                <input id="schedule-time" type="time" required aria-describedby="schedule-error schedule-tz" />
+              </div>
+              <p class="schedule-tz" id="schedule-tz"></p>
+              <p class="schedule-error" id="schedule-error" role="alert" aria-live="polite"></p>
+            </div>
+          </fieldset>
           <div id="write-notice" class="notice" role="alert"></div>
           <div class="editor-actions">
             <button class="btn btn-primary" type="button" id="write-publish"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg><span id="write-publish-label">Publish story</span></button>
@@ -666,7 +722,7 @@
     <!-- ---------- My posts ---------- -->
     <section class="view" id="view-mine" hidden>
       <div class="section-head">
-        <div><h2>My posts</h2><p>Edit or remove the stories you've published.</p></div>
+        <div><h2>My posts</h2><p>Edit or remove your stories, and see which are drafts, scheduled or published.</p></div>
         <button class="btn btn-primary" type="button" id="mine-write-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New story</button>
       </div>
       <div class="mine-list" id="mine-list"></div>
@@ -1497,6 +1553,7 @@
   var feedState = { search: "", nextPage: null, loading: false, token: null };
   var postCache = {};            // id -> post, for the reader and editing
   var editingPostId = null;
+  var editingPostStatus = null;  // status of the post being edited: draft / scheduled / published
   var openPostId = null;
   var GRADIENTS = [
     "linear-gradient(135deg,#7c3aed,#ec4899)", "linear-gradient(135deg,#f97316,#ec4899)",
@@ -1506,6 +1563,8 @@
 
   function pick(list, n) { return list[Math.abs(n) % list.length]; }
   function authHeaders() { return { Authorization: "Bearer " + lastToken }; }
+  // For public reads: lets an author open their own draft/scheduled post.
+  function viewerHeaders() { return lastToken ? authHeaders() : {}; }
   function safeMediaUrl(u) { return typeof u === "string" && u.indexOf("/media/") === 0 ? u : null; }
   function coverUrl(post) {
     var imgs = (post.images && post.images.length ? post.images : (post.image ? [post.image] : []));
@@ -1545,6 +1604,12 @@
     var detail = typeof body.detail === "string" ? body.detail : "";
     if (detail === LIMIT_MSG) return LIMIT_MSG;
     if (/^(Unsupported image type|Image exceeds|Uploaded file is empty)/.test(detail)) return detail;
+    // Scheduled publishing: the API's own messages are already user-facing.
+    if (res.status === 409 && detail) return detail;
+    if (res.status === 422 && Array.isArray(body.detail)) {
+      var sched = body.detail.filter(function (e) { return e && e.loc && e.loc[e.loc.length - 1] === "scheduled_at"; })[0];
+      if (sched && typeof sched.msg === "string") return sched.msg.replace(/^Value error, /, "").replace(/^scheduled_at /, "The scheduled time ");
+    }
     if (res.status === 404) return "That post no longer exists.";
     if (res.status === 403) return "You don't have permission to do that.";
     return fallback;
@@ -1710,7 +1775,7 @@
   async function openPost(postId, focusComments) {
     var post = postCache[postId];
     if (!post) {
-      var r = await fetch("/posts/" + postId);
+      var r = await fetch("/posts/" + postId, { headers: viewerHeaders() });
       if (!r.ok) { toast("That post no longer exists.", "error"); return; }
       post = postCache[postId] = await r.json();
     }
@@ -1798,6 +1863,8 @@
     el("write-drop-text").innerHTML = "<b>Click to add an image</b><br>JPEG, PNG or WEBP, up to 5 MB";
     el("write-drop").querySelectorAll("img").forEach(function (n) { n.remove(); });
     el("write-notice").className = "notice";
+    editingPostStatus = null;
+    resetPublishOptions();
     updateCounter();
   }
   function updateCounter() {
@@ -1821,9 +1888,110 @@
   });
   function showWriteError(msg) { var n = el("write-notice"); n.textContent = msg; n.className = "notice error"; }
 
+  // --- Publishing options (Publish Now / Save as Draft / Schedule Post) ---
+  // Sent to the API as publish_option (+ scheduled_at, in UTC) -- see
+  // PostCreate/PostUpdate. The date/time pickers are in the browser's local
+  // timezone; the API re-checks everything, so this is just early feedback.
+  var PUBLISH_HINTS = {
+    publish_now: "Your story goes live as soon as you publish it.",
+    save_draft: "Only you can see a draft. Publish or schedule it whenever you're ready.",
+    schedule: "Your story stays hidden until the date and time you pick, then goes live automatically.",
+  };
+  var OPTION_STATUS = { publish_now: "published", save_draft: "draft", schedule: "scheduled" };
+  var MIN_SCHEDULE_LEAD_MS = 60 * 1000; // at least a minute ahead, so it's still in the future when it arrives
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+  function localDateValue(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
+  function localTimeValue(d) { return pad2(d.getHours()) + ":" + pad2(d.getMinutes()); }
+  function publishRadios() { return document.querySelectorAll('input[name="publish-option"]'); }
+  function selectedPublishOption() {
+    var checked = document.querySelector('input[name="publish-option"]:checked');
+    return checked ? checked.value : "publish_now";
+  }
+  function setPublishOption(value) {
+    publishRadios().forEach(function (r) { r.checked = r.value === value; });
+    updatePublishUI();
+  }
+  function niceDateTime(d) {
+    return d.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  }
+  function scheduledDateFromInputs() {
+    var date = el("schedule-date").value, time = el("schedule-time").value;
+    if (!date || !time) return null;
+    var d = new Date(date + "T" + time); // local time
+    return isNaN(d.getTime()) ? null : d;
+  }
+  function setScheduleError(msg) {
+    el("schedule-error").textContent = msg || "";
+    ["schedule-date", "schedule-time"].forEach(function (id) {
+      if (msg) el(id).setAttribute("aria-invalid", "true"); else el(id).removeAttribute("aria-invalid");
+    });
+  }
+  // Returns an error message, or "" when the chosen date/time is usable.
+  function scheduleProblem() {
+    var date = el("schedule-date").value, time = el("schedule-time").value;
+    if (!date && !time) return "Choose a date and time to schedule your story.";
+    if (!date) return "Choose a date to schedule your story.";
+    if (!time) return "Choose a time to schedule your story.";
+    var when = scheduledDateFromInputs();
+    if (!when) return "That date or time isn't valid.";
+    if (when.getTime() <= Date.now()) return "That time is in the past. Choose a future date and time.";
+    if (when.getTime() < Date.now() + MIN_SCHEDULE_LEAD_MS) return "Choose a time at least a minute from now.";
+    return "";
+  }
+  function refreshScheduleLimits() {
+    var now = new Date();
+    el("schedule-date").min = localDateValue(now);
+    // Only restrict the time when the chosen day is today.
+    el("schedule-time").min = el("schedule-date").value === localDateValue(now) ? localTimeValue(now) : "";
+  }
+  function updatePublishUI() {
+    var option = selectedPublishOption();
+    var scheduling = option === "schedule";
+    el("schedule-fields").hidden = !scheduling;
+    el("schedule-date").required = scheduling;
+    el("schedule-time").required = scheduling;
+    if (scheduling) refreshScheduleLimits(); else setScheduleError("");
+    if (editingPostStatus !== "published") el("publish-hint").textContent = PUBLISH_HINTS[option];
+    var label;
+    if (editingPostId !== null && OPTION_STATUS[option] === editingPostStatus) label = "Save changes";
+    else if (option === "save_draft") label = "Save draft";
+    else if (option === "schedule") label = editingPostStatus === "scheduled" ? "Update schedule" : "Schedule story";
+    else label = editingPostId !== null ? "Publish now" : "Publish story";
+    el("write-publish-label").textContent = label;
+  }
+  function resetPublishOptions() {
+    publishRadios().forEach(function (r) { r.disabled = false; });
+    el("schedule-date").value = "";
+    el("schedule-time").value = "";
+    setScheduleError("");
+    setPublishOption("publish_now");
+  }
+  publishRadios().forEach(function (r) {
+    r.addEventListener("change", function () {
+      el("write-notice").className = "notice";
+      if (selectedPublishOption() === "schedule" && !el("schedule-date").value) {
+        // Sensible starting point: tomorrow, same hour, on the hour.
+        var d = new Date(Date.now() + 24 * 3600 * 1000);
+        d.setMinutes(0, 0, 0);
+        el("schedule-date").value = localDateValue(d);
+        el("schedule-time").value = localTimeValue(d);
+      }
+      updatePublishUI();
+    });
+  });
+  ["schedule-date", "schedule-time"].forEach(function (id) {
+    el(id).addEventListener("change", function () { refreshScheduleLimits(); setScheduleError(scheduleProblem()); });
+    el(id).addEventListener("input", function () { if (el("schedule-error").textContent) setScheduleError(scheduleProblem()); });
+  });
+  (function showTimezone() {
+    var tz = "";
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) { /* ignore */ }
+    el("schedule-tz").textContent = "Times are in your local time" + (tz ? " (" + tz + ")" : "") + ".";
+  })();
+
   async function startEdit(postId) {
     var post = postCache[postId];
-    if (!post) { var r = await fetch("/posts/" + postId); if (!r.ok) { toast("That post no longer exists.", "error"); return; } post = postCache[postId] = await r.json(); }
+    if (!post) { var r = await fetch("/posts/" + postId, { headers: viewerHeaders() }); if (!r.ok) { toast("That post no longer exists.", "error"); return; } post = postCache[postId] = await r.json(); }
     showView("write");
     resetEditor();
     editingPostId = postId;
@@ -1831,8 +1999,21 @@
     el("write-content").value = post.content;
     el("write-heading").textContent = "Edit your story";
     el("write-sub").textContent = "Update the text or add another image, then save your changes.";
-    el("write-publish-label").textContent = "Save changes";
     el("write-cancel").hidden = false;
+    editingPostStatus = post.status || "published";
+    if (editingPostStatus === "published") {
+      // The API doesn't move a published post back to draft/scheduled (409).
+      publishRadios().forEach(function (r) { r.disabled = r.value !== "publish_now"; });
+      el("publish-hint").textContent = "This story is already live. To take it down, delete it from My posts.";
+      setPublishOption("publish_now");
+    } else if (editingPostStatus === "scheduled" && post.scheduled_at) {
+      var when = new Date(post.scheduled_at);
+      el("schedule-date").value = localDateValue(when);
+      el("schedule-time").value = localTimeValue(when);
+      setPublishOption("schedule");
+    } else {
+      setPublishOption("save_draft");
+    }
     updateCounter();
   }
   el("write-cancel").addEventListener("click", function () { resetEditor(); showView("mine"); });
@@ -1842,6 +2023,21 @@
     var content = el("write-content").value.trim();
     el("write-notice").className = "notice";
     if (!title || !content) { showWriteError("Add a title and some content before publishing."); return; }
+    var option = selectedPublishOption();
+    var scheduledAt = null;
+    if (option === "schedule") {
+      var problem = scheduleProblem();
+      setScheduleError(problem);
+      // Shown once, right under the pickers (not repeated in #write-notice).
+      if (problem) { el(el("schedule-date").value ? "schedule-time" : "schedule-date").focus(); return; }
+      scheduledAt = scheduledDateFromInputs();
+    }
+    var payload = { title: title, content: content };
+    // Editing a published post: leave its status alone (publish_option omitted).
+    if (!(editingPostId !== null && editingPostStatus === "published")) {
+      payload.publish_option = option;
+      if (scheduledAt) payload.scheduled_at = scheduledAt.toISOString();
+    }
     var btn = el("write-publish");
     btn.disabled = true;
     try {
@@ -1849,7 +2045,7 @@
       var res = await fetch(isEdit ? "/posts/" + editingPostId : "/posts", {
         method: isEdit ? "PUT" : "POST",
         headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
-        body: JSON.stringify({ title: title, content: content }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) { showWriteError(await apiError(res, isEdit ? "Couldn't save your changes. Please try again." : "Couldn't publish your story. Please try again.")); return; }
       var post = await res.json();
@@ -1859,14 +2055,23 @@
         form.append("image", pickedImage);
         var up = await fetch("/posts/" + post.id + "/image", { method: "POST", headers: authHeaders(), body: form });
         if (!up.ok) {
-          toast((isEdit ? "Changes saved" : "Story published") + ", but the image wasn't added: " + (await apiError(up, "upload failed.")), "error");
+          toast((isEdit ? "Changes saved" : post.status === "draft" ? "Draft saved" : post.status === "scheduled" ? "Story scheduled" : "Story published") + ", but the image wasn't added: " + (await apiError(up, "upload failed.")), "error");
           resetEditor(); showView("mine"); loadFeed(true); return;
         }
         postCache[post.id] = await up.json();
       }
-      toast(isEdit ? "Changes saved" : "Your story is live!", "ok");
+      var saved = postCache[post.id];
       resetEditor();
-      showView("feed");
+      if (saved.status === "draft") {
+        toast("Draft saved. Only you can see it.", "ok");
+        showView("mine");
+      } else if (saved.status === "scheduled") {
+        toast("Scheduled for " + niceDateTime(new Date(saved.scheduled_at)), "ok");
+        showView("mine");
+      } else {
+        toast(isEdit ? "Changes saved" : "Your story is live!", "ok");
+        showView("feed");
+      }
       loadFeed(true);
     } catch (e) {
       showWriteError("Can't reach the server. Please try again.");
@@ -1876,6 +2081,28 @@
   });
 
   // --- My posts ---
+  // Publishing state for the author's own list: badge + when it goes / went live.
+  function fullDateTime(iso) {
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? "" : d.toLocaleString(undefined, {
+      weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit",
+    });
+  }
+  function timeHtml(iso) { return '<time datetime="' + escapeHtml(iso) + '">' + escapeHtml(fullDateTime(iso)) + "</time>"; }
+  function mineStatusHtml(p) {
+    var status = p.status || "published"; // posts from before scheduled publishing
+    if (status === "draft") {
+      return '<p class="mine-status"><span class="status-tag draft">Draft</span>Only visible to you</p>';
+    }
+    if (status === "scheduled") {
+      var due = p.scheduled_at && new Date(p.scheduled_at).getTime() <= Date.now();
+      return '<p class="mine-status"><span class="status-tag scheduled">Scheduled</span>' +
+        (p.scheduled_at ? "Scheduled for: " + timeHtml(p.scheduled_at) + (due ? " · going live now" : "") : "Scheduled") + "</p>";
+    }
+    var when = p.published_at || p.created_at;
+    return '<p class="mine-status"><span class="status-tag published">Published</span>' +
+      (when ? "Published: " + timeHtml(when) : "Published") + "</p>";
+  }
   async function loadMine() {
     var list = el("mine-list");
     list.innerHTML = '<p class="muted"><span class="spinner"></span></p>';
@@ -1888,7 +2115,8 @@
         var url = coverUrl(p);
         var thumb = url ? '<div class="mine-thumb" style="background-image:url(\'' + encodeURI(url) + '\')"></div>'
           : '<div class="mine-thumb" style="background:' + pick(GRADIENTS, p.id) + '">' + escapeHtml((p.title || "?").charAt(0)) + "</div>";
-        return '<div class="mine-item">' + thumb + "<div><h3>" + escapeHtml(p.title) + "</h3><p>" + escapeHtml(niceDate(p.created_at)) + " · " + readingTime(p.content) +
+        return '<div class="mine-item">' + thumb + "<div><h3>" + escapeHtml(p.title) + "</h3>" + mineStatusHtml(p) +
+          "<p>" + escapeHtml(niceDate(p.created_at)) + " · " + readingTime(p.content) +
           '</p></div><div class="mine-actions"><button class="btn btn-ghost btn-sm" type="button" data-open="' + p.id + '">View</button>' +
           '<button class="btn btn-ghost btn-sm" type="button" data-edit="' + p.id + '">Edit</button>' +
           '<button class="btn btn-danger btn-sm" type="button" data-delete="' + p.id + '">Delete</button></div></div>';
